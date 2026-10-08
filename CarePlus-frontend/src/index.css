@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-text-primary antialiased;
+  }
+}
+
+@layer utilities {
+  /* Custom scrollbar for clean dashboard aesthetic */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-surface-low;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-text-outline rounded-full;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-text-tertiary;
+  }
+}
