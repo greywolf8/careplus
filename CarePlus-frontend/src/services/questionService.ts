@@ -1,10 +1,7 @@
 import { supabase } from '../lib/supabase';
-import { assertDoctorAccess } from '../lib/auth';
 import type { PatientQuestion } from '../types';
 
 export async function getPatientQuestions(patientId: string) {
-  await assertDoctorAccess(patientId);
-
   const { data, error } = await supabase
     .from('patient_questions')
     .select('*')

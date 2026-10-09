@@ -81,15 +81,42 @@ class OpenRouterClient(LLMClient):
         model: Optional[str] = None
     ) -> str:
         try:
-            response = await self._call_api(
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                model=model
-            )
-            return response
+            message = await self.chat_with_tools(messages, tools=None, temperature=temperature, max_tokens=max_tokens, model=model)
+            return message.get("content", "")
         except Exception as e:
             logger.error("openrouter_chat_error", error=str(e))
+            raise
+
+    async def chat_with_tools(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        temperature: float = 0.3,
+        max_tokens: Optional[int] = None,
+        model: Optional[str] = None,
+        tool_choice: str = "auto",
+    ) -> Dict[str, Any]:
+        """
+        OpenAI-compatible chat completion that supports function/tool calling.
+        Returns the raw assistant message dict (content + optional tool_calls).
+        """
+        payload: Dict[str, Any] = {
+            "model": model or self.default_model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = tool_choice
+        try:
+            response = await self.client.post("/chat/completions", json=payload)
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]
+        except Exception as e:
+            logger.error("openrouter_chat_tools_error", error=str(e))
             raise
 
     async def _call_api(

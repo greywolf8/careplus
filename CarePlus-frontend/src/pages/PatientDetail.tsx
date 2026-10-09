@@ -1,22 +1,25 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { 
-  ArrowLeft, 
-  Verified, 
-  PlusCircle, 
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  ArrowLeft,
+  Verified,
+  PlusCircle,
   AlertCircle,
   ClipboardList,
   FileText,
   Pill,
   Activity,
-  History
+  History,
+  X,
+  Loader2,
 } from 'lucide-react';
 import { getPatientById } from '../services/doctorService';
 import { getPatientItems } from '../services/itemService';
 import { getPatientFlags } from '../services/flagService';
 import { getPatientQuestions } from '../services/questionService';
 import { getPatientMedications } from '../services/medicationService';
+import { webGetDischargeSummary, webAddTask } from '../lib/api';
 
 type TabType = 'attention' | 'plan' | 'summary' | 'medicines' | 'activity' | 'audit';
 
@@ -32,6 +35,17 @@ const tabs = [
 export function PatientDetail() {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState<TabType>('plan');
+  const queryClient = useQueryClient();
+
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [taskForm, setTaskForm] = useState({
+    title: '',
+    description: '',
+    item_type: 'care_instruction',
+    due_date: '',
+  });
+  const [submittingTask, setSubmittingTask] = useState(false);
+  const [taskError, setTaskError] = useState<string | null>(null);
 
   const { data: patient, isLoading: patientLoading } = useQuery({
     queryKey: ['patient', id],
@@ -43,6 +57,12 @@ export function PatientDetail() {
     queryKey: ['patient-items', id],
     queryFn: () => getPatientItems(id!),
     enabled: !!id,
+  });
+
+  const { data: dischargeSummary, isLoading: summaryLoading } = useQuery({
+    queryKey: ['patient-discharge-summary', id],
+    queryFn: () => webGetDischargeSummary(id!),
+    enabled: !!id && activeTab === 'summary',
   });
 
   const { data: flags } = useQuery({
@@ -62,6 +82,36 @@ export function PatientDetail() {
     queryFn: () => getPatientMedications(id!),
     enabled: !!id,
   });
+
+  async function submitAddTask() {
+    if (!taskForm.description.trim()) {
+      setTaskError('Task description is required');
+      return;
+    }
+    setSubmittingTask(true);
+    setTaskError(null);
+    try {
+      const res = await webAddTask({
+        patient_id: id!,
+        description: taskForm.description.trim(),
+        item_type: taskForm.item_type,
+        due_date: taskForm.due_date || null,
+        title: taskForm.title.trim() || null,
+      });
+      if (res.error) {
+        setTaskError(res.error);
+        return;
+      }
+      setShowAddTask(false);
+      setTaskForm({ title: '', description: '', item_type: 'care_instruction', due_date: '' });
+      // Refresh plan items (web Plan reads v_items_effective -> followup_item)
+      queryClient.invalidateQueries({ queryKey: ['patient-items', id] });
+    } catch (e: any) {
+      setTaskError(e?.message || 'Failed to add task');
+    } finally {
+      setSubmittingTask(false);
+    }
+  }
 
   if (patientLoading) {
     return (
@@ -141,7 +191,10 @@ export function PatientDetail() {
               <Verified className="w-4 h-4" />
               Verify audit log
             </button>
-            <button className="px-4 py-2 rounded-lg bg-primary hover:bg-primary-700 text-white font-medium transition-colors flex items-center gap-2">
+            <button
+              onClick={() => setShowAddTask(true)}
+              className="px-4 py-2 rounded-lg bg-primary hover:bg-primary-700 text-white font-medium transition-colors flex items-center gap-2"
+            >
               <PlusCircle className="w-4 h-4" />
               Add task
             </button>
@@ -307,8 +360,47 @@ export function PatientDetail() {
         )}
 
         {activeTab === 'summary' && (
-          <div className="text-center py-8">
-            <p className="text-sm text-slate-500">Discharge summary view</p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900">Discharge Summary</h3>
+              {(dischargeSummary?.data?.summaries?.length ?? 0) > 0 && (
+                <span className="text-xs text-slate-500">
+                  {dischargeSummary?.data?.summaries?.length} record(s)
+                </span>
+              )}
+            </div>
+            {summaryLoading ? (
+              <div className="flex items-center justify-center gap-2 py-12 text-slate-500 text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading discharge summary...
+              </div>
+            ) : (dischargeSummary?.data?.summaries?.length ?? 0) > 0 ? (
+              <div className="space-y-4">
+                {dischargeSummary!.data!.summaries!.map((s) => (
+                  <div key={s.id} className="border border-border rounded-lg overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-border text-xs text-slate-500">
+                      <div className="flex items-center gap-3">
+                        {s.discharge_date && (
+                          <span>Discharged: {new Date(s.discharge_date).toLocaleDateString()}</span>
+                        )}
+                        <span className="capitalize">{s.language}</span>
+                      </div>
+                      <span>Uploaded {new Date(s.created_at).toLocaleString()}</span>
+                    </div>
+                    <pre className="whitespace-pre-wrap text-sm text-slate-700 leading-relaxed p-4 max-h-[50vh] overflow-y-auto">
+                      {s.raw_content}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 border border-dashed border-border rounded-lg">
+                <FileText className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <p className="text-sm text-slate-500">No discharge summary recorded yet.</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Upload one from the New Discharge flow (Upload → Review & Publish) and it will appear here.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -324,6 +416,93 @@ export function PatientDetail() {
           </div>
         )}
       </div>
+
+      {/* Add Task modal */}
+      {showAddTask && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h2 className="text-lg font-bold text-slate-900">Add task to care plan</h2>
+              <button
+                onClick={() => setShowAddTask(false)}
+                className="p-1 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Type</label>
+                <select
+                  value={taskForm.item_type}
+                  onChange={(e) => setTaskForm({ ...taskForm, item_type: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="appointment">Appointment</option>
+                  <option value="test">Test</option>
+                  <option value="medication">Medication</option>
+                  <option value="care_instruction">Care instruction</option>
+                  <option value="warning_sign">Warning sign</option>
+                  <option value="diet">Diet</option>
+                  <option value="rehab">Rehab</option>
+                  <option value="wound_care">Wound care</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Title (optional)</label>
+                <input
+                  type="text"
+                  value={taskForm.title}
+                  onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
+                  placeholder="Short label for the plan"
+                  className="w-full px-3 py-2 bg-white border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Description *</label>
+                <textarea
+                  rows={4}
+                  value={taskForm.description}
+                  onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
+                  placeholder="What should the patient do?"
+                  className="w-full px-3 py-2 bg-white border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Due date (optional)</label>
+                <input
+                  type="date"
+                  value={taskForm.due_date}
+                  onChange={(e) => setTaskForm({ ...taskForm, due_date: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              {taskError && (
+                <div className="flex items-start gap-2 px-3 py-2 bg-danger-container/20 border border-danger/30 rounded-lg text-xs text-danger">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>{taskError}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-border bg-slate-50">
+              <button
+                onClick={() => setShowAddTask(false)}
+                disabled={submittingTask}
+                className="px-4 py-2 bg-white border border-border rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitAddTask}
+                disabled={submittingTask}
+                className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {submittingTask ? (<><Loader2 className="w-4 h-4 animate-spin" /> Adding...</>) : 'Add task'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

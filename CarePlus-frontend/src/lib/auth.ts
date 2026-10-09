@@ -15,7 +15,7 @@ export async function getCurrentProfile(): Promise<Profile> {
     .from('profiles')
     .select('*')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
 
   if (error) throw error;
   if (!profile) throw new Error('Profile not found');

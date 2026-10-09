@@ -1,0 +1,125 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+
+    /* ── Dark Mode tokens (default) ── */
+    --cp-bg:            #020817;
+    --cp-surface:       #0f172a;
+    --cp-surface-2:     #1e293b;
+    --cp-surface-3:     #334155;
+    --cp-border:        rgba(20,184,166,0.15);
+    --cp-border-strong: rgba(20,184,166,0.35);
+    --cp-text:          #f1f5f9;
+    --cp-text-muted:    #94a3b8;
+    --cp-text-subtle:   #64748b;
+    --cp-primary:       #14b8a6;
+    --cp-primary-dim:   rgba(20,184,166,0.15);
+    --cp-primary-text:  #0d9488;
+    --cp-accent:        #2dd4bf;
+    --cp-header-bg:     rgba(15,23,42,0.98);
+    --cp-header-border: rgba(30,41,59,0.9);
+    --cp-tab-bg:        rgba(15,23,42,0.98);
+    --cp-tab-border:    rgba(30,41,59,0.8);
+    --cp-card-bg:       #0f172a;
+    --cp-card-border:   rgba(30,41,59,0.8);
+    --cp-input-bg:      #1e293b;
+    --cp-input-border:  #334155;
+    --cp-amber:         #fbbf24;
+    --cp-amber-bg:      rgba(120,53,15,0.4);
+    --cp-amber-border:  rgba(120,53,15,0.6);
+    --cp-red:           #f87171;
+    --cp-red-bg:        rgba(127,29,29,0.4);
+    --cp-green:         #34d399;
+    --cp-green-bg:      rgba(6,78,59,0.4);
+    --cp-shadow:        0 1px 3px rgba(0,0,0,0.5);
+    --cp-shadow-lg:     0 8px 32px rgba(0,0,0,0.6);
+  }
+
+  /* ── Clinical Mint Light Mode tokens (exact design spec) ── */
+  [data-theme="light"] {
+    --cp-bg:             #F2F7FC;
+    --cp-surface:        #EAF4FA;
+    --cp-surface-2:      #E1F0F7;
+    --cp-surface-3:      #D4E9F4;
+    --cp-border:         #C5DCE8;
+    --cp-border-strong:  #00AFA3;
+    --cp-text:           #18324A;
+    --cp-text-muted:     #587084;
+    --cp-text-subtle:    #7A9AAD;
+    --cp-primary:        #00AFA3;
+    --cp-primary-dim:    rgba(0,175,163,0.12);
+    --cp-primary-text:   #007A73;
+    --cp-accent:         #00AFA3;
+    --cp-header-bg:      rgba(255,255,255,0.97);
+    --cp-header-border:  #C5DCE8;
+    --cp-tab-bg:         rgba(255,255,255,0.97);
+    --cp-tab-border:     #C5DCE8;
+    --cp-card-bg:        #EAF4FA;
+    --cp-card-bg-2:      #E1F0F7;
+    --cp-card-border:    #C5DCE8;
+    --cp-input-bg:       #F4FAFD;
+    --cp-input-border:   #C5DCE8;
+    --cp-amber:          #C58A00;
+    --cp-amber-bg:       #FFF5D9;
+    --cp-amber-border:   #F5D57A;
+    --cp-red:            #C0392B;
+    --cp-red-bg:         #FDE8E8;
+    --cp-green:          #1A7A50;
+    --cp-green-bg:       #E4F6F1;
+    --cp-shadow:         0 1px 4px rgba(24,50,74,0.07), 0 2px 8px rgba(24,50,74,0.04);
+    --cp-shadow-lg:      0 4px 20px rgba(24,50,74,0.10);
+    --cp-hero-bg:        linear-gradient(135deg, #D4EEF7 0%, #E8F5FB 60%, #F0F8FD 100%);
+    --cp-hero-border:    #B8D9E8;
+    --cp-hero-text:      #18324A;
+  }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    overscroll-behavior-y: none;
+  }
+}
+
+/* Custom mobile app utilities */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 12px), 12px);
+}
+
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top, 8px), 8px);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@media print {
+  body {
+    background-color: white !important;
+    color: black !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  @page {
+    size: A4;
+    margin: 1.5cm;
+  }
+}

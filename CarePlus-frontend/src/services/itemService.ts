@@ -1,44 +1,48 @@
 import { supabase } from '../lib/supabase';
-import { assertDoctorAccess } from '../lib/auth';
+import { apiFetch } from '../lib/api';
 import type { FollowupItem, ItemEffective } from '../types';
 
 export async function getPatientItems(patientId: string) {
-  await assertDoctorAccess(patientId);
+  const result = await apiFetch<{ data: ItemEffective[] }>(`/obligation/graph/${patientId}`);
 
-  const { data, error } = await supabase
-    .from('v_items_effective')
-    .select('*')
-    .eq('patient_id', patientId)
-    .order('due_date', { ascending: true, nullsFirst: false });
+  if (result.error) {
+    const fallback = await supabase
+      .from('v_items_effective')
+      .select('*')
+      .eq('patient_id', patientId)
+      .order('due_date', { ascending: true, nullsFirst: false });
 
-  if (error) throw error;
-  return data as ItemEffective[];
+    if (fallback.error) throw fallback.error;
+    return fallback.data as ItemEffective[];
+  }
+
+  return result.data;
 }
 
 export async function approveItem(itemId: string) {
-  const { data, error } = await supabase.rpc('approve_item', {
-    item_id: itemId
+  // Try backend API first, fall back to Supabase RPC
+  const result = await apiFetch<{ data: any }>('/obligation/approve', {
+    method: 'POST',
+    body: JSON.stringify({ extracted_id: itemId, rmp_id: '', mci_reg: '', final_text: '' }),
   });
 
-  if (error) throw error;
-  return data;
+  if (result.error) {
+    const { data, error } = await supabase.rpc('approve_item', { item_id: itemId });
+    if (error) throw error;
+    return data;
+  }
+
+  return result.data;
 }
 
 export async function rejectItem(itemId: string, reason?: string) {
-  const { data, error } = await supabase.rpc('reject_item', {
-    item_id: itemId,
-    reason
-  });
-
+  const { data, error } = await supabase.rpc('reject_item', { item_id: itemId, reason });
   if (error) throw error;
   return data;
 }
 
 export async function markItemDone(itemId: string) {
-  const { data, error } = await supabase.rpc('mark_item_done', {
-    item_id: itemId
-  });
-
+  const { data, error } = await supabase.rpc('mark_item_done', { item_id: itemId });
   if (error) throw error;
   return data;
 }

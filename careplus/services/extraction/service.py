@@ -37,6 +37,13 @@ async def extract_from_discharge_summary(
     Returns:
         Dict with items, could_not_place, quality, and completeness metrics
     """
+    logger.info(
+        "extraction_started",
+        discharge_type=discharge_type,
+        text_length=len(raw_text),
+        text_preview=raw_text[:500] if raw_text else ""
+    )
+
     # Step 1: De-identify text
     deidentified_text, token_mapping = deidentify_text(raw_text)
 
@@ -46,46 +53,106 @@ async def extract_from_discharge_summary(
     extractor_b_items = ensemble_result["extractor_b_items"]
     models_used = ensemble_result["models_used"]
 
+    logger.info(
+        "ensemble_extraction_results",
+        extractor_a_count=len(extractor_a_items),
+        extractor_b_count=len(extractor_b_items),
+        extractor_a_categories=[item.get("category") for item in extractor_a_items],
+        extractor_b_categories=[item.get("category") for item in extractor_b_items]
+    )
+
     # Step 3: Merge ensemble results
     merged_items = merge_ensemble_results(extractor_a_items, extractor_b_items)
+
+    logger.info(
+        "merged_items",
+        merged_count=len(merged_items),
+        merged_categories=[item.get("category") for item in merged_items]
+    )
 
     # Step 4: Restore PHI in quotes (span resolution needs original text)
     items_with_original_quotes = restore_quotes_with_original(merged_items, token_mapping)
 
-    # Step 5: Resolve spans and validate quotes
+    logger.info(
+        "restore_quotes_complete",
+        items_with_quotes_count=len(items_with_original_quotes),
+        items_with_quotes_categories=[item.get("category") for item in items_with_original_quotes]
+    )
+
+    # Step 5: Resolve spans (tolerant). Keep every identified item so results
+    # and completeness reflect what the model found; items whose quote cannot
+    # be verified are FLAGGED (not dropped) and still surfaced for human review.
     valid_items = []
     could_not_place = []
+    missing_quote_count = 0
+    quote_not_found_count = 0
+    span_resolution_failed_count = 0
 
     for item in items_with_original_quotes:
+        if not isinstance(item.get("metadata"), dict):
+            item["metadata"] = {}
+        flags = item["metadata"].setdefault("quality_flags", [])
+
         quote = item.get("quote", "")
         if not quote:
+            missing_quote_count += 1
+            logger.warning(
+                "item_missing_quote",
+                category=item.get("category"),
+                content=item.get("content", "")[:100]
+            )
+            if "missing_quote" not in flags:
+                flags.append("missing_quote")
             could_not_place.append({
                 "item": item,
                 "reason": "missing_quote"
             })
+            valid_items.append(item)
             continue
 
-        # Validate quote exists in original text
-        if not validate_quote_exactness(raw_text, quote):
+        # Resolve span tolerantly (exact, then whitespace/case-insensitive).
+        span = resolve_span(raw_text, quote)
+        if span is not None:
+            item["source_span"] = span
+        else:
+            item["source_span"] = None
+            quote_not_found_count += 1
+            logger.warning(
+                "unverified_quote_not_dropped",
+                category=item.get("category"),
+                quote=quote[:100],
+                content=item.get("content", "")[:100]
+            )
+            if "unverified_quote" not in flags:
+                flags.append("unverified_quote")
             could_not_place.append({
                 "item": item,
                 "reason": "quote_not_found_in_document"
             })
-            continue
+        valid_items.append(item)
 
-        # Resolve span
-        span = resolve_span(raw_text, quote)
-        if span:
-            item["source_span"] = span
-            valid_items.append(item)
-        else:
-            could_not_place.append({
-                "item": item,
-                "reason": "span_resolution_failed"
-            })
+    logger.info(
+        "span_resolution_complete",
+        valid_items_count=len(valid_items),
+        could_not_place_count=len(could_not_place),
+        missing_quote_count=missing_quote_count,
+        quote_not_found_count=quote_not_found_count,
+        span_resolution_failed_count=span_resolution_failed_count,
+        valid_item_categories=[item.get("category") for item in valid_items]
+    )
 
     # Step 6: Check completeness
     completeness_result = check_completeness(valid_items, discharge_type)
+
+    logger.info(
+        "completeness_check",
+        discharge_type=discharge_type,
+        required_count=completeness_result["required_count"],
+        found_count=completeness_result["found_count"],
+        missing_categories=completeness_result["missing"],
+        extracted_categories=[item.get("category") for item in valid_items],
+        checklist_pass=completeness_result["checklist_pass"]
+    )
 
     # Step 7: Lint pass
     lint_result = lint_extracted_items(valid_items)

@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException, status, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Optional, Dict, Any
 import uuid
@@ -51,6 +52,8 @@ from careplus.services.eval.canary_seeder import seed_canary
 from careplus.llm.openrouter import OpenRouterClient
 from careplus.db.client import get_supabase_client
 from careplus.services.policy import log_audit_entry
+from careplus.api.patient_mobile import router as patient_mobile_router
+from careplus.api.web_flow import router as web_flow_router, to_extracted_item
 
 app = FastAPI(
     title="CarePlus API",
@@ -93,6 +96,12 @@ The doctor remains the final authority.
 - POST /consent/revoke - Revoke consent for a purpose
 - POST /verify/audit - Verify audit chain integrity
 
+### Patient mobile (PWA contract; careplus-mobile integration target)
+- GET /patient/me/context - Resolve patient/caregiver context
+- GET /patient/{patient_id}/items - Follow-up plan items for Today/Plan tabs
+- POST /patient/question - Ask tab routing + message persistence
+- POST /patient/{patient_id}/sync-plan - Care team: sync approved clinical data to patient tables
+
 ### Eval & Admin
 - GET /eval/metrics - Get all evaluation metrics
 - GET /eval/metrics/history - Get metrics history for trends
@@ -113,6 +122,25 @@ Synthetic data only. Not for production clinical use without regulatory review.
     version="1.0.0"
 )
 
+app.include_router(patient_mobile_router)
+app.include_router(web_flow_router)
+
+# CORS — allow the web frontend (Vite dev servers + preview) to call the API.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:4173",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+    ],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
@@ -125,7 +153,7 @@ async def request_id_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    if request.url.path in ["/health", "/docs", "/openapi.json", "/eval/metrics", "/eval/metrics/history"]:
+    if request.url.path in ["/health", "/docs", "/openapi.json", "/eval/metrics", "/eval/metrics/history"] or request.method == "OPTIONS":
         return await call_next(request)
 
     auth_header = request.headers.get("Authorization")
@@ -183,10 +211,10 @@ async def extract(request: Request, body: ExtractRequest):
 
     # Check role authorization
     user_role = user.get("role", "")
-    if user_role not in ["rmp", "coordinator"]:
+    if user_role not in ["rmp", "coordinator", "doctor"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only RMP or coordinator role can extract obligations"
+            detail="Only RMP, coordinator, or doctor role can extract obligations"
         )
 
     try:
@@ -200,8 +228,8 @@ async def extract(request: Request, body: ExtractRequest):
             discharge_type=discharge_type
         )
 
-        # Convert dict items to Pydantic models
-        items = [ExtractedItem(**item) for item in result["items"]]
+        # Convert dict items to Pydantic models (tolerant of pipeline shape)
+        items = [to_extracted_item(item) for item in result["items"]]
 
         response = ExtractResponse(
             items=items,
@@ -844,10 +872,10 @@ async def approve_obligation(request: Request, body: ApproveObligationRequest):
 
     # Check role authorization
     user_role = user.get("role", "")
-    if user_role != "rmp":
+    if user_role not in ["rmp", "doctor"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only RMP role can approve obligations"
+            detail="Only RMP or doctor role can approve obligations"
         )
 
     try:
@@ -891,6 +919,24 @@ async def approve_obligation(request: Request, body: ApproveObligationRequest):
             approver_rmp_id=body.rmp_id,
             approved_at=datetime.now()
         )
+
+        # When approval persists an approved_item row, sync into patient-mobile followup_item tables.
+        try:
+            supabase = get_supabase_client(use_service_role=True)
+            approved = (
+                supabase.table("approved_item")
+                .select("id")
+                .eq("id", str(extracted_item_id))
+                .limit(1)
+                .execute()
+            )
+            if approved.data:
+                supabase.rpc(
+                    "sync_followup_from_approved_item",
+                    {"p_approved_item_id": str(extracted_item_id)},
+                ).execute()
+        except Exception as sync_err:
+            logger.warning("patient_plan_sync_skipped", error=str(sync_err))
 
         return response
 
@@ -1583,3 +1629,5 @@ async def verify_audit(request: Request, body: VerifyAuditRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to verify audit chain: {str(e)}"
         )
+
+

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 import { assertDoctorAccess } from '../lib/auth';
 import type { ReviewFlag } from '../types';
 
@@ -21,21 +22,10 @@ export async function getUnresolvedFlags() {
   if (!profile.data.user) throw new Error('Not authenticated');
 
   try {
-    const { data, error } = await supabase
-      .from('review_flags')
-      .select(`
-        *,
-        patients (
-          id,
-          full_name,
-          mrn
-        )
-      `)
-      .eq('resolved', false)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return data;
+    // Doctor-scoped via backend (flags only for this doctor's patients).
+    const res = await apiFetch<{ flags: any[] }>('/web/my-flags');
+    if (res.error) throw new Error(res.error);
+    return res.data.flags || [];
   } catch (error: any) {
     console.error('[flagService] Failed to fetch unresolved flags:', error);
     return [];

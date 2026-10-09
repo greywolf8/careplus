@@ -39,14 +39,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(userProfile);
     } catch (error) {
       console.error('[AuthContext] Failed to load profile from profiles table:', error);
-      // Fallback: Use auth user data if profiles table is inaccessible (RLS issue)
+      // Fallback when the profiles row is missing. Use the role encoded on the
+      // auth user (patient logins carry role:'patient') instead of blindly
+      // defaulting to 'doctor' — otherwise a patient session masquerades as a
+      // doctor in the UI while the backend correctly rejects care-team actions.
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        // Create a minimal profile from auth user data
+        const metaRole = user.user_metadata?.role;
+        const resolvedRole: 'doctor' | 'patient' | 'caregiver' =
+          metaRole === 'patient' || metaRole === 'caregiver' ? metaRole : 'doctor';
+
+        // Self-heal a doctor profile only for doctor-type accounts
+        // (never turn a patient's auth user into a doctor profile).
+        if (resolvedRole === 'doctor') {
+          try {
+            await supabase.from('profiles').upsert(
+              {
+                id: user.id,
+                full_name: user.user_metadata?.full_name || user.email || 'Doctor',
+                role: 'doctor',
+                preferred_language: 'en',
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'id' }
+            );
+          } catch (healErr) {
+            console.error('[AuthContext] Failed to self-heal profiles row:', healErr);
+          }
+        }
+
         const fallbackProfile: Profile = {
           id: user.id,
           full_name: user.user_metadata?.full_name || null,
-          role: 'doctor', // Default to doctor for demo
+          role: resolvedRole,
           preferred_language: 'en',
           created_at: user.created_at || new Date().toISOString(),
           updated_at: user.updated_at || new Date().toISOString(),

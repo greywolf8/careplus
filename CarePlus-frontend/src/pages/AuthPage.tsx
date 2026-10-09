@@ -64,16 +64,17 @@ export function AuthPage() {
           throw error;
         }
 
-        // Create profile entry
+        // Create profile entry (upsert so a self-healed row doesn't 409)
         if (data.user) {
           console.log('[Auth] Creating profile for user:', data.user.id);
-          const { error: profileError } = await supabase.from('profiles').insert({
+          const { error: profileError } = await supabase.from('profiles').upsert({
             id: data.user.id,
             full_name: fullName,
             role: 'doctor', // Default to doctor for demo
             preferred_language: 'en',
-          });
-          console.log('[Auth] Profile creation result:', { profileError });
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
+          console.log('[Auth] Profile upsert result:', { profileError });
           if (profileError) throw profileError;
         }
       }

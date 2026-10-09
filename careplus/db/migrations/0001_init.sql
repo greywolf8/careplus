@@ -185,11 +185,20 @@ ALTER TABLE eval_metric ENABLE ROW LEVEL SECURITY;
 -- RLS Policies
 
 -- Service role bypasses RLS (enforced in code, not just convention)
-CREATE POLICY "Service role bypass" ON ALL TABLES
-    FOR ALL
-    TO service_role
-    USING (true)
-    WITH CHECK (true);
+-- Create individual policies for each table since ON ALL TABLES is not supported
+CREATE POLICY "Service role bypass" ON patient FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role bypass" ON discharge_summary FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role bypass" ON extracted_item FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role bypass" ON approved_item FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role bypass" ON obligation FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role bypass" ON rmp FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role bypass" ON consent FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role bypass" ON translation FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role bypass" ON patient_question FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role bypass" ON audit_log FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role bypass" ON policy_decision FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role bypass" ON canary FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role bypass" ON eval_metric FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- Patient: can only SELECT their own rows on approved_item
 CREATE POLICY "Patients can read own approved items" ON approved_item

@@ -1,0 +1,6 @@
+{
+  "name": "CarePlus Mobile Patient & Caregiver Coordinator",
+  "description": "Mobile PWA discharge and follow-up care coordinator for patients and caregivers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

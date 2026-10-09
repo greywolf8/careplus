@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ae021a86-2c4c-4a9f-92f6-b3ef33a8af31",
+    "patient_id": "176b461a-cc1c-487a-ada0-652569cf0e87",
+    "card_type": "medication-delay",
+    "raised_by": "patient",
+    "raised_by_name": "Ravi Kumar",
+    "description": "Pharmacy delayed ticagrelor refill",
+    "status": "needs-review",
+    "care_team_notes": null,
+    "created_at": "2026-10-09 00:10:53.99438+00",
+    "resolved_at": null
+  },
+  {
+    "id": "fa1471ec-98f1-41b0-8cf3-ec978392c960",
+    "patient_id": "0e8a69f7-58ce-4d7e-b4c7-09c3c6a9212d",
+    "card_type": "medication-delay",
+    "raised_by": "patient",
+    "raised_by_name": "Ravi Kumar",
+    "description": "Pharmacy delayed ticagrelor refill",
+    "status": "needs-review",
+    "care_team_notes": null,
+    "created_at": "2026-10-09 00:13:54.010293+00",
+    "resolved_at": null
+  }
+]
