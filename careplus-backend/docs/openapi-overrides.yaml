@@ -1,0 +1,201 @@
+# OpenAPI Override for CarePlus Backend
+# This file adds safety and documentation metadata to the auto-generated OpenAPI spec.
+# The backend /docs endpoint remains unmodified; this is a documentation layer only.
+
+openapi: "3.1.0"
+info:
+  title: "CarePlus API - Safety Overrides"
+  version: "1.0.0"
+
+paths:
+  /health:
+    get:
+      x-internal-name: "health_check"
+      x-safety-tier: "draft"
+      x-eval-metric-tag: []
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+  /extract:
+    post:
+      x-internal-name: "extract_from_discharge_summary"
+      x-safety-tier: "grounded-only"
+      x-eval-metric-tag: ["omission_rate", "hallucination_rate", "model_ensemble_agreement"]
+      x-required-consent-purpose: "data_processing"
+      x-llm-models-used: ["openai/gpt-4o-mini", "openai/gpt-4o-mini"]
+
+  /translate:
+    post:
+      x-internal-name: "translate_item"
+      x-safety-tier: "grounded-only"
+      x-eval-metric-tag: ["readability_pass_rate", "translation_entity_preservation"]
+      x-required-consent-purpose: "translation"
+      x-llm-models-used: ["openai/gpt-4o-mini"]
+
+  /question/classify:
+    post:
+      x-internal-name: "classify_patient_question"
+      x-safety-tier: "always-escalate"
+      x-eval-metric-tag: ["calibrated_abstention_rate"]
+      x-required-consent-purpose: "question_classification"
+      x-llm-models-used: ["openai/gpt-4o-mini"]  # Only for non-emergency routes
+
+  /question/answer/plan:
+    post:
+      x-internal-name: "answer_plan_question"
+      x-safety-tier: "grounded-only"
+      x-eval-metric-tag: ["hallucination_rate"]
+      x-required-consent-purpose: "question_answering"
+      x-llm-models-used: ["openai/gpt-4o-mini"]
+
+  /question/answer/doctor:
+    post:
+      x-internal-name: "answer_doctor_question"
+      x-safety-tier: "grounded-only"
+      x-eval-metric-tag: []
+      x-required-consent-purpose: "question_answering"
+      x-llm-models-used: ["openai/gpt-4o-mini"]
+
+  /task/draft:
+    post:
+      x-internal-name: "draft_task_from_description"
+      x-safety-tier: "grounded-only"
+      x-eval-metric-tag: []
+      x-required-consent-purpose: "task_drafting"
+      x-llm-models-used: ["openai/gpt-4o-mini"]
+
+  /providers/match:
+    post:
+      x-internal-name: "match_providers"
+      x-safety-tier: "draft"
+      x-eval-metric-tag: []
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+  /verify/translation:
+    post:
+      x-internal-name: "verify_translation"
+      x-safety-tier: "grounded-only"
+      x-eval-metric-tag: []
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+  /verify/span:
+    post:
+      x-internal-name: "verify_span"
+      x-safety-tier: "draft"
+      x-eval-metric-tag: []
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+  /obligation/approve:
+    post:
+      x-internal-name: "approve_obligation"
+      x-safety-tier: "grounded-only"
+      x-eval-metric-tag: ["reviewer_time_saved"]
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+  /obligation/close:
+    post:
+      x-internal-name: "close_obligation"
+      x-safety-tier: "grounded-only"
+      x-eval-metric-tag: []
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+  /obligation/graph/{patient_id}:
+    get:
+      x-internal-name: "get_obligation_graph"
+      x-safety-tier: "grounded-only"
+      x-eval-metric-tag: []
+      x-required-consent-purpose: "data_processing"
+      x-llm-models-used: []
+
+  /episode/{patient_id}:
+    get:
+      x-internal-name: "get_episode_page"
+      x-safety-tier: "grounded-only"
+      x-eval-metric-tag: ["hallucination_rate"]
+      x-required-consent-purpose: "data_processing"
+      x-llm-models-used: []
+
+  /consent/grant:
+    post:
+      x-internal-name: "grant_consent"
+      x-safety-tier: "draft"
+      x-eval-metric-tag: []
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+  /consent/revoke:
+    post:
+      x-internal-name: "revoke_consent"
+      x-safety-tier: "always-escalate"
+      x-eval-metric-tag: []
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+  /eval/metrics:
+    get:
+      x-internal-name: "get_eval_metrics"
+      x-safety-tier: "draft"
+      x-eval-metric-tag: []  # This endpoint returns metrics, doesn't contribute to them
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+  /eval/metrics/history:
+    get:
+      x-internal-name: "get_eval_metrics_history"
+      x-safety-tier: "draft"
+      x-eval-metric-tag: []
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+  /admin/canary/seed:
+    post:
+      x-internal-name: "seed_canary"
+      x-safety-tier: "always-escalate"
+      x-eval-metric-tag: ["reviewer_vigilance"]
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+  /admin/eval/run:
+    post:
+      x-internal-name: "run_full_eval"
+      x-safety-tier: "draft"
+      x-eval-metric-tag: []  # Triggers computation of all metrics
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+  /admin/eval/run/{job_id}:
+    get:
+      x-internal-name: "get_eval_job_status"
+      x-safety-tier: "draft"
+      x-eval-metric-tag: []
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+  /verify/audit:
+    post:
+      x-internal-name: "verify_audit_chain"
+      x-safety-tier: "always-escalate"
+      x-eval-metric-tag: []
+      x-required-consent-purpose: null
+      x-llm-models-used: []
+
+# Safety Tier Definitions:
+# - draft: Early development, not yet clinically validated
+# - grounded-only: Responses are grounded in approved content or deterministic rules
+# - always-escalate: Always escalates to human review for critical safety decisions
+
+# Eval Metrics:
+# - omission_rate: Percentage of gold-standard items not extracted
+# - hallucination_rate: Percentage of compiled sentences failing faithfulness check
+# - readability_pass_rate: Percentage of translations meeting readability thresholds
+# - injection_resistance: Percentage of adversarial inputs that did not produce unauthorized output
+# - reviewer_time_saved: Percentage improvement in review time with AI assistance
+# - reviewer_vigilance: Percentage of seeded canaries caught by reviewers
+# - translation_entity_preservation: Percentage of translations passing entity roundtrip check
+# - calibrated_abstention_rate: Percentage of escalations matching gold-standard requirements
+# - model_ensemble_agreement: Percentage of items found by both extractors
