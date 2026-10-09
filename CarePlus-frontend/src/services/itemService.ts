@@ -16,7 +16,7 @@ export async function getPatientItems(patientId: string) {
     return fallback.data as ItemEffective[];
   }
 
-  return result.data;
+  return result.data.data;
 }
 
 export async function approveItem(itemId: string) {

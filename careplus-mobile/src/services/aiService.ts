@@ -104,10 +104,12 @@ function getApiBaseUrl(): string {
   if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
     return envUrl.trim().replace(/\/+$/, '');
   }
-  return '/api';
+  // Default to backend server
+  return 'http://localhost:8000';
 }
 
 function isMockMode(): boolean {
+  // Only use mock mode if explicitly set, otherwise use real backend
   return import.meta.env.VITE_AI_MOCK === 'true';
 }
 
@@ -145,13 +147,10 @@ export const aiService = {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer mock_token_${context.userId}`,
           },
           body: JSON.stringify({
+            patient_id: context.patientId,
             question,
-            language,
-            patientId: context.patientId,
-            role: context.role,
           }),
         });
 
@@ -263,13 +262,15 @@ export const aiService = {
     if (!isMockMode()) {
       try {
         const baseUrl = getApiBaseUrl();
-        const res = await fetch(`${baseUrl}/question/answer`, {
+        const res = await fetch(`${baseUrl}/question/answer/plan`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer mock_token_${context.userId}`,
           },
-          body: JSON.stringify({ question, language, patientId: context.patientId }),
+          body: JSON.stringify({
+            patient_id: context.patientId,
+            question,
+          }),
         });
 
         if (res.ok) {
@@ -342,13 +343,10 @@ export const aiService = {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer mock_token_${context.userId}`,
           },
           body: JSON.stringify({
+            patient_id: context.patientId,
             question,
-            language,
-            patientId: context.patientId,
-            role: context.role,
           }),
         });
 

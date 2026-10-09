@@ -121,7 +121,7 @@ export function NewDischarge() {
       const pref: Record<number, { name: string; dose: string; frequency: string; duration: string }> = {};
       (result.items || []).forEach((it, i) => {
         if (it.item_type === 'medication') {
-          const d = (it.metadata && it.metadata.medication_details) || {};
+          const d = (it.metadata as any && (it.metadata as any).medication_details) || {};
           pref[i] = {
             name: d.name || '',
             dose: d.dose || '',
@@ -147,7 +147,7 @@ export function NewDischarge() {
       (extractResult?.items || []).forEach((it, i) => {
         if (!selectedIdx.includes(i)) return;
         const md = it.metadata || {};
-        const extracted = (md.medication_details as any) || {};
+        const extracted = ((md as any).medication_details as any) || {};
         let medication_details: any = undefined;
         if (it.item_type === 'medication') {
           const e = medEdits[i] || { name: '', dose: '', frequency: '', duration: '' };
@@ -182,9 +182,9 @@ export function NewDischarge() {
         return;
       }
       setPublishResult({
-        items_published: res.data.items_published,
-        medications_synced: res.data.medications_synced,
-        warning_signs_synced: res.data.warning_signs_synced,
+        items_published: (res.data as any).items_published,
+        medications_synced: (res.data as any).medications_synced,
+        warning_signs_synced: (res.data as any).warning_signs_synced,
       });
     } catch (e: any) {
       setPublishError(e?.message || 'Publish failed');

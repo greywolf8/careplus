@@ -272,6 +272,26 @@ export const TaskCard: React.FC<TaskCardProps> = ({ item, onOpenDetails }) => {
         style={{ borderTop: isLight ? '1px solid #C5DCE8' : '1px solid rgba(30,41,59,0.8)' }}
       >
         <div className="flex items-center gap-1.5">
+          {/* Reschedule button for appointments */}
+          {item.category === 'appointment' && !isCompleted && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                // Open reschedule modal - this would need to be implemented
+                notifySuccess('Reschedule feature coming soon - contact care team to reschedule', 'Info');
+              }}
+              aria-label="Request reschedule"
+              className="min-h-[44px] px-2.5 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1 transition active:scale-95 cursor-pointer"
+              style={isLight
+                ? { backgroundColor: '#D4EEF7', border: '1px solid #C5DCE8', color: '#007A73' }
+                : { backgroundColor: 'rgba(30,41,59,1)', border: '1px solid rgba(71,85,105,1)', color: '#5eead4' }}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Request Reschedule</span>
+            </button>
+          )}
+
           {/* Listen */}
           <button
             type="button"

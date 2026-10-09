@@ -198,6 +198,46 @@ export async function webGetMyFlags() {
   return apiFetch<{ flags: any[] }>('/web/my-flags');
 }
 
+export async function webRescheduleAppointment(payload: {
+  item_id: string;
+  new_due_date: string;
+  new_due_time?: string;
+  new_provider?: any;
+  reason?: string;
+}) {
+  return apiFetch('/web/schedule/reschedule', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function webSendMessage(payload: {
+  patient_id: string;
+  body: string;
+  message_type?: string;
+  cited_item_ids?: string[];
+}) {
+  return apiFetch('/web/messages/send', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function webGetMessages(patientId: string) {
+  return apiFetch<{ messages: any[] }>(`/web/messages/${patientId}`);
+}
+
+export async function webAnswerQuestion(payload: {
+  question_id: string;
+  answer: string;
+  cited_item_ids?: string[];
+}) {
+  return apiFetch('/web/questions/answer', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function webGetSchedule(days = 7) {
   return apiFetch<{
     today: Array<{

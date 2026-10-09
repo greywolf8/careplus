@@ -12,6 +12,7 @@ import { WarningSignsView } from '../../views/WarningSignsView';
 import { TestsView } from '../../views/TestsView';
 import { FindCareView } from '../../views/FindCareView';
 import { RemindersView } from '../../views/RemindersView';
+import { MessagesView } from '../../views/MessagesView';
 import { SettingsView } from '../../views/SettingsView';
 import { PrintView } from '../../views/PrintView';
 
@@ -35,6 +36,8 @@ export const MobileAppShell: React.FC = () => {
           return <FindCareView />;
         case 'reminders':
           return <RemindersView />;
+        case 'messages':
+          return <MessagesView />;
         case 'settings':
           return <SettingsView />;
         case 'print':

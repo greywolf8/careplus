@@ -374,3 +374,22 @@ export interface DbCoordinationCard {
   created_at: string;
   resolved_at?: string | null;
 }
+
+// ==========================================
+// Review Flags (unified with coordination cards)
+// ==========================================
+export type DbReviewFlagSeverity = 'low' | 'medium' | 'high';
+
+export interface DbReviewFlag {
+  id: string;
+  patient_id: string;
+  card_type?: string | null;
+  raised_by_name?: string | null;
+  reason: string;
+  severity: DbReviewFlagSeverity;
+  care_team_notes?: string | null;
+  created_at: string;
+  resolved_at?: string | null;
+  resolved: boolean;
+  question_id?: string | null;
+}

@@ -13,6 +13,7 @@ import {
   Info,
   ChevronRight,
   Phone,
+  MessageSquare,
 } from 'lucide-react';
 
 export const MoreView: React.FC = () => {
@@ -64,6 +65,15 @@ export const MoreView: React.FC = () => {
       iconStyle: isLight
         ? { backgroundColor: '#F3EEFF', border: '1px solid #D4B8F0', color: '#7C3AED' }
         : { backgroundColor: 'rgba(88,28,135,0.7)', border: '1px solid rgba(109,40,217,0.5)', color: '#c084fc' },
+    },
+    {
+      id: 'messages',
+      labelKey: 'messages',
+      description: 'Communication with care team',
+      icon: MessageSquare,
+      iconStyle: isLight
+        ? { backgroundColor: '#EAF4FA', border: '1px solid #C5DCE8', color: '#587084' }
+        : { backgroundColor: 'rgba(30,41,59,1)', border: '1px solid rgba(71,85,105,1)', color: '#94a3b8' },
     },
     {
       id: 'settings',

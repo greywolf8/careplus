@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
 from uuid import UUID
 
@@ -22,6 +22,7 @@ from careplus.schemas.patient_mobile import (
     ItemTranslationResponse,
     MarkItemDoneRequest,
     MedicationResponse,
+    MessageResponse,
     PatientContextResponse,
     PatientMessageCreateRequest,
     PatientMessageResponse,
@@ -29,6 +30,9 @@ from careplus.schemas.patient_mobile import (
     PatientQuestionSubmitResponse,
     ReleaseTestResultRequest,
     ReminderResponse,
+    ReviewFlagCreate,
+    ReviewFlagResponse,
+    ReviewFlagUpdate,
     SyncPlanResponse,
     TabPermissionsResponse,
     TestResultResponse,
@@ -355,3 +359,160 @@ async def legacy_approved_items(patient_id: UUID, request: Request):
     _access().assert_can_access_patient(request.state.user, patient_id)
     rows = _items().list_followup_items(patient_id)
     return {"items": rows}
+
+
+# ---------------------------------------------------------------------
+# Review Flags (unified with coordination cards)
+# ---------------------------------------------------------------------
+@router.get("/{patient_id}/review-flags", response_model=List[ReviewFlagResponse])
+async def list_review_flags(patient_id: UUID, request: Request):
+    """List review flags for a patient (mobile app uses this instead of coordination cards)."""
+    _access().assert_can_access_patient(request.state.user, patient_id)
+    supabase = _supabase()
+    rows = (
+        supabase.table("review_flags")
+        .select("*")
+        .eq("patient_id", str(patient_id))
+        .order("created_at", desc=True)
+        .execute()
+    ).data or []
+    return [ReviewFlagResponse(**r) for r in rows]
+
+
+@router.post("/{patient_id}/review-flags", response_model=ReviewFlagResponse)
+async def create_review_flag(
+    patient_id: UUID, request: Request, body: ReviewFlagCreate
+):
+    """Create a review flag (mobile app replacement for coordination cards)."""
+    ctx = _access().assert_can_access_patient(request.state.user, patient_id)
+    raised_by_name = body.raised_by_name or ctx["patient_name"]
+    supabase = _supabase()
+
+    # Map card_type to severity if not provided
+    severity_map = {
+        "symptom-report": "high",
+        "medication-not-taken": "high",
+        "medication-delay": "medium",
+        "test-delay": "medium",
+        "appointment-question": "low",
+        "unclear-instruction": "medium",
+        "general-review": "medium",
+    }
+    severity = body.severity or severity_map.get(body.card_type, "medium")
+
+    row = (
+        supabase.table("review_flags")
+        .insert({
+            "patient_id": str(patient_id),
+            "card_type": body.card_type,
+            "raised_by_name": raised_by_name,
+            "reason": body.description,
+            "severity": severity,
+            "resolved": False,
+            "question_id": str(body.question_id) if body.question_id else None,
+        })
+        .select("*")
+        .single()
+        .execute()
+    ).data
+
+    return ReviewFlagResponse(**row)
+
+
+@router.patch("/review-flags/{flag_id}", response_model=ReviewFlagResponse)
+async def update_review_flag(flag_id: UUID, request: Request, body: ReviewFlagUpdate):
+    """Update a review flag (patients can only update their own flags, not resolve them)."""
+    user = request.state.user
+    supabase = _supabase()
+
+    # Check if user owns this flag
+    flag = (
+        supabase.table("review_flags")
+        .select("*")
+        .eq("id", str(flag_id))
+        .single()
+        .execute()
+    ).data
+
+    if not flag:
+        raise HTTPException(status_code=404, detail="Review flag not found")
+
+    # Patients can only update their own flags, care team can update any
+    if user.get("role") not in ("rmp", "coordinator"):
+        ctx = _access().resolve_context_from_token(user)
+        if str(flag["patient_id"]) != str(ctx["patient_id"]):
+            raise HTTPException(status_code=403, detail="You can only update your own flags")
+
+    # Patients cannot resolve flags (only care team can)
+    if user.get("role") not in ("rmp", "coordinator") and body.resolved:
+        raise HTTPException(status_code=403, detail="Only care team can resolve flags")
+
+    update_data = {
+        "care_team_notes": body.care_team_notes,
+    }
+
+    if body.resolved:
+        update_data["resolved"] = True
+        update_data["resolved_at"] = datetime.now().isoformat()
+        if user.get("role") in ("rmp", "coordinator"):
+            update_data["resolved_by"] = user.get("user_id")
+
+    updated = (
+        supabase.table("review_flags")
+        .update(update_data)
+        .eq("id", str(flag_id))
+        .select("*")
+        .single()
+        .execute()
+    ).data
+
+    return ReviewFlagResponse(**updated)
+
+
+# ---------------------------------------------------------------------
+# Messaging endpoints for mobile app
+# ---------------------------------------------------------------------
+@router.post("/{patient_id}/messages")
+async def send_patient_message(patient_id: UUID, request: Request, body: SendMessageRequest):
+    """Send a message from patient/caregiver to care team."""
+    ctx = _access().assert_can_access_patient(request.state.user, patient_id)
+    supabase = _supabase()
+
+    actor_name = ctx["patient_name"]
+    if ctx.get("role") == "caregiver":
+        actor_name = f"{ctx.get('relationship', 'Caregiver')} ({ctx['patient_name']})"
+
+    message = (
+        supabase.table("patient_message")
+        .insert({
+            "patient_id": str(patient_id),
+            "sender": "patient" if ctx.get("role") == "patient" else "caregiver",
+            "sender_name": actor_name,
+            "body": body.body,
+            "message_type": body.message_type,
+            "cited_item_ids": [str(id) for id in (body.cited_item_ids or [])],
+        })
+        .select("*")
+        .single()
+        .execute()
+    ).data
+
+    return MessageResponse(**message)
+
+
+@router.get("/{patient_id}/messages")
+async def get_patient_messages(patient_id: UUID, request: Request):
+    """Get all messages for a patient."""
+    ctx = _access().assert_can_access_patient(request.state.user, patient_id)
+    supabase = _supabase()
+
+    messages = (
+        supabase.table("patient_message")
+        .select("*")
+        .eq("patient_id", str(patient_id))
+        .order("created_at", desc=True)
+        .limit(100)
+        .execute()
+    ).data or []
+
+    return {"messages": messages}

@@ -293,3 +293,47 @@ class GenericSuccessResponse(BaseModel):
     success: bool = True
     message: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
+
+
+class ReviewFlagCreate(BaseModel):
+    card_type: str
+    description: str
+    raised_by_name: Optional[str] = None
+    severity: str = "medium"
+    question_id: Optional[UUID] = None
+
+
+class ReviewFlagUpdate(BaseModel):
+    resolved: bool
+    care_team_notes: Optional[str] = None
+
+
+class ReviewFlagResponse(BaseModel):
+    id: UUID
+    patient_id: UUID
+    card_type: Optional[str] = None
+    raised_by_name: Optional[str] = None
+    reason: str
+    severity: str
+    care_team_notes: Optional[str] = None
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+    resolved: bool = False
+    question_id: Optional[UUID] = None
+
+
+class SendMessageRequest(BaseModel):
+    body: str
+    message_type: str = "question"
+    cited_item_ids: Optional[List[UUID]] = None
+
+
+class MessageResponse(BaseModel):
+    id: UUID
+    patient_id: UUID
+    sender: str
+    sender_name: str
+    body: str
+    message_type: str
+    cited_item_ids: Optional[List[str]] = None
+    created_at: datetime

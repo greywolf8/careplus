@@ -75,7 +75,7 @@ export async function getPatientById(patientId: string) {
     return data as Patient;
   }
 
-  return result.data;
+  return result.data.data;
 }
 export async function createPatient(
   patientData: {

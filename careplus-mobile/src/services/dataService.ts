@@ -11,6 +11,7 @@ import * as providerService from './supabase/providerService';
 import * as messageService from './supabase/messageService';
 import * as reminderService from './supabase/reminderService';
 import * as coordinationService from './supabase/coordinationService';
+import * as reviewFlagService from './supabase/reviewFlagService';
 import * as caregiverService from './supabase/caregiverService';
 import * as translationService from './supabase/translationService';
 import * as consentService from './supabase/consentService';
@@ -318,12 +319,13 @@ export class DataService {
     return res;
   }
 
-  // Coordination Cards
+  // Coordination Cards (now uses review_flags table for unification)
   public async getCoordinationCards(patientId: string): Promise<CoordinationCard[]> {
     if (!this.isSupabase) {
       return mockDb.getCoordinationCards(patientId);
     }
-    const cards = await coordinationService.fetchCoordinationCards(patientId);
+    // Use review_flags instead of coordination_card for unification
+    const cards = await reviewFlagService.fetchReviewFlags(patientId);
     if (cards.length > 0) return cards;
     return mockDb.getCoordinationCards(patientId);
   }
@@ -334,7 +336,8 @@ export class DataService {
     if (!this.isSupabase) {
       return mockDb.addCoordinationCard(card);
     }
-    const created = await coordinationService.createCoordinationCard(card);
+    // Use review_flags instead of coordination_card for unification
+    const created = await reviewFlagService.createReviewFlag(card);
     if (created) {
       mockDb.addCoordinationCard(card);
       return created;
@@ -350,7 +353,8 @@ export class DataService {
     if (!this.isSupabase) {
       return mockDb.updateCoordinationCardStatus(id, status, careTeamNotes);
     }
-    const ok = await coordinationService.updateCoordinationCardStatus(id, status, careTeamNotes);
+    // Use review_flags instead of coordination_card for unification
+    const ok = await reviewFlagService.updateReviewFlagStatus(id, status, careTeamNotes);
     if (ok) {
       mockDb.updateCoordinationCardStatus(id, status, careTeamNotes);
     }

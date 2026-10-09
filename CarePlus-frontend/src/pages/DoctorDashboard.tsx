@@ -2,13 +2,23 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Users, Calendar, MessageSquare, ChevronRight, AlertTriangle, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import { getPatientAttentionList } from '../services/doctorService';
 import { getUnresolvedFlags } from '../services/flagService';
-import { webGetSchedule } from '../lib/api';
+import { webGetSchedule, webRescheduleAppointment } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 
 export function DoctorDashboard() {
   const { profile } = useAuth();
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+  const [rescheduleForm, setRescheduleForm] = useState({
+    new_due_date: '',
+    new_due_time: '',
+    reason: '',
+  });
+  const [rescheduling, setRescheduling] = useState(false);
+
   const { data: attentionList, isLoading: attentionLoading } = useQuery({
     queryKey: ['patient-attention'],
     queryFn: getPatientAttentionList,
@@ -30,6 +40,39 @@ export function DoctorDashboard() {
   const needsAttention = attentionList?.filter(p => p.urgency_score > 0) || [];
   const openQuestions = flags?.filter(f => f.question_id) || [];
   const overdueItems = attentionList?.filter(p => p.overdue_items > 0) || [];
+
+  const handleReschedule = async () => {
+    if (!selectedAppointment || !rescheduleForm.new_due_date) return;
+    setRescheduling(true);
+    try {
+      await webRescheduleAppointment({
+        item_id: selectedAppointment.id,
+        new_due_date: rescheduleForm.new_due_date,
+        new_due_time: rescheduleForm.new_due_time || undefined,
+        reason: rescheduleForm.reason || undefined,
+      });
+      setShowRescheduleModal(false);
+      setSelectedAppointment(null);
+      setRescheduleForm({ new_due_date: '', new_due_time: '', reason: '' });
+      // Refetch schedule
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to reschedule:', error);
+      alert('Failed to reschedule appointment');
+    } finally {
+      setRescheduling(false);
+    }
+  };
+
+  const openRescheduleModal = (appointment: any) => {
+    setSelectedAppointment(appointment);
+    setRescheduleForm({
+      new_due_date: appointment.due_date || '',
+      new_due_time: appointment.due_time || '',
+      reason: '',
+    });
+    setShowRescheduleModal(true);
+  };
 
   // Display name: strip a leading "Dr. " if present so the greeting reads once.
   const rawName = (profile?.full_name || '').trim();
@@ -241,18 +284,18 @@ export function DoctorDashboard() {
             <header className="p-4 px-5 border-b border-slate-100 flex items-center justify-between">
               <h2 className="text-sm font-bold text-slate-900">Today's schedule</h2>
               <span className="text-xs text-slate-500">
-                {schedule?.today?.length || 0} today
+                {schedule?.data?.today?.length || 0} today
               </span>
             </header>
             <div className="p-5 space-y-3.5">
               {scheduleLoading ? (
                 <div className="text-center text-slate-500 text-sm py-4">Loading…</div>
-              ) : (schedule?.today?.length || 0) === 0 ? (
+              ) : (schedule?.data?.today?.length || 0) === 0 ? (
                 <div className="text-center text-slate-500 text-sm py-4">
                   No appointments scheduled for today
                 </div>
               ) : (
-                schedule!.today!.map((a) => (
+                schedule!.data!.today!.map((a: any) => (
                   <Link
                     key={a.id}
                     to={`/doctor/patients/${a.patient_id}`}
@@ -260,7 +303,7 @@ export function DoctorDashboard() {
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-semibold shrink-0">
-                        {a.patient_name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                        {a.patient_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
                       </div>
                       <div>
                         <h3 className="text-xs font-bold text-slate-900">{a.patient_name}</h3>
@@ -275,6 +318,16 @@ export function DoctorDashboard() {
                         <>
                           <Clock className="w-3.5 h-3.5" />
                           <span>{a.due_time || '—'}</span>
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              openRescheduleModal(a);
+                            }}
+                            className="p-1 hover:bg-slate-200 rounded transition-colors"
+                            title="Reschedule"
+                          >
+                            <Calendar className="w-3.5 h-3.5" />
+                          </button>
                         </>
                       )}
                     </div>
@@ -282,11 +335,11 @@ export function DoctorDashboard() {
                 ))
               )}
 
-              {!scheduleLoading && (schedule?.upcoming?.length || 0) > 0 && (
+              {!scheduleLoading && (schedule?.data?.upcoming?.length || 0) > 0 && (
                 <div className="pt-2 border-t border-slate-100">
                   <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">Upcoming</p>
                   <div className="space-y-1.5">
-                    {schedule!.upcoming!.slice(0, 5).map((a) => (
+                    {schedule!.data!.upcoming!.slice(0, 5).map((a: any) => (
                       <div key={a.id} className="flex items-center justify-between text-xs text-slate-600">
                         <span className="truncate">
                           <span className="font-medium text-slate-700">{a.patient_name}</span> — {a.title || 'Appointment'}
@@ -303,6 +356,74 @@ export function DoctorDashboard() {
           </section>
         </div>
       </div>
+
+      {/* Reschedule Modal */}
+      {showRescheduleModal && selectedAppointment && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+            <h2 className="text-lg font-bold text-slate-900 mb-4">Reschedule Appointment</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Patient</label>
+                <p className="text-sm text-slate-600">{selectedAppointment.patient_name}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Current Date</label>
+                <p className="text-sm text-slate-600">{selectedAppointment.due_date}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">New Date *</label>
+                <input
+                  type="date"
+                  value={rescheduleForm.new_due_date}
+                  onChange={(e) => setRescheduleForm({ ...rescheduleForm, new_due_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">New Time</label>
+                <input
+                  type="time"
+                  value={rescheduleForm.new_due_time}
+                  onChange={(e) => setRescheduleForm({ ...rescheduleForm, new_due_time: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Reason</label>
+                <textarea
+                  rows={2}
+                  value={rescheduleForm.reason}
+                  onChange={(e) => setRescheduleForm({ ...rescheduleForm, reason: e.target.value })}
+                  placeholder="Optional reason for rescheduling"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowRescheduleModal(false);
+                  setSelectedAppointment(null);
+                  setRescheduleForm({ new_due_date: '', new_due_time: '', reason: '' });
+                }}
+                disabled={rescheduling}
+                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReschedule}
+                disabled={rescheduling || !rescheduleForm.new_due_date}
+                className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+              >
+                {rescheduling ? 'Rescheduling...' : 'Reschedule'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

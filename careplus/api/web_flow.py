@@ -1242,3 +1242,233 @@ async def web_schedule(request: Request, days: int = 7):
     today_list = [a for a in appts if a["due_date"] == today.isoformat()]
     upcoming = [a for a in appts if a["due_date"] != today.isoformat()]
     return {"today": today_list, "upcoming": upcoming, "today_date": today.isoformat()}
+
+
+# ---------------------------------------------------------------------
+# Reschedule appointment
+# ---------------------------------------------------------------------
+class RescheduleAppointmentRequest(BaseModel):
+    item_id: UUID
+    new_due_date: str
+    new_due_time: Optional[str] = None
+    new_provider: Optional[Dict[str, Any]] = None
+    reason: Optional[str] = None
+
+
+@router.post("/schedule/reschedule")
+async def reschedule_appointment(request: Request, body: RescheduleAppointmentRequest):
+    """Reschedule an existing appointment (followup_item with category='appointment')."""
+    _require_care_team(request)
+    supabase = get_supabase_client(use_service_role=True)
+    user = request.state.user
+
+    # Verify the item exists and is an appointment
+    item = (
+        supabase.table("followup_item")
+        .select("*")
+        .eq("id", str(body.item_id))
+        .single()
+        .execute()
+    ).data
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    if item.get("category") != "appointment":
+        raise HTTPException(status_code=400, detail="Item is not an appointment")
+
+    # Verify doctor has access to this patient
+    pids = _doctor_patient_ids(supabase, user)
+    if item["patient_id"] not in pids:
+        raise HTTPException(status_code=403, detail="You do not have access to this patient")
+
+    # Update the appointment
+    update_data = {
+        "due_date": body.new_due_date,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    if body.new_due_time:
+        update_data["due_time"] = body.new_due_time
+
+    if body.new_provider:
+        update_data["provider_suggestion"] = body.new_provider
+
+    updated = (
+        supabase.table("followup_item")
+        .update(update_data)
+        .eq("id", str(body.item_id))
+        .select("*")
+        .single()
+        .execute()
+    ).data
+
+    # Log audit entry
+    log_audit_entry(
+        supabase,
+        action="reschedule_appointment",
+        actor=user.get("user_id"),
+        target_type="followup_item",
+        target_id=str(body.item_id),
+        details={
+            "old_due_date": item.get("due_date"),
+            "new_due_date": body.new_due_date,
+            "reason": body.reason,
+        },
+    )
+
+    return {
+        "id": updated["id"],
+        "patient_id": updated["patient_id"],
+        "title": updated.get("title"),
+        "due_date": updated.get("due_date"),
+        "due_time": updated.get("due_time"),
+        "provider": _prov(updated.get("provider_suggestion")),
+        "status": updated.get("effective_status"),
+    }
+
+
+# ---------------------------------------------------------------------
+# Messaging endpoints
+# ---------------------------------------------------------------------
+class SendMessageRequest(BaseModel):
+    patient_id: UUID
+    body: str
+    message_type: str = "doctor_answer"
+    cited_item_ids: Optional[List[UUID]] = None
+
+
+@router.post("/messages/send")
+async def send_message(request: Request, body: SendMessageRequest):
+    """Send a message from doctor to patient."""
+    _require_care_team(request)
+    supabase = get_supabase_client(use_service_role=True)
+    user = request.state.user
+
+    # Verify doctor has access to this patient
+    pids = _doctor_patient_ids(supabase, user)
+    if str(body.patient_id) not in pids:
+        raise HTTPException(status_code=403, detail="You do not have access to this patient")
+
+    # Get doctor's name
+    doctor = (
+        supabase.table("profiles")
+        .select("full_name, name")
+        .eq("id", user.get("user_id"))
+        .single()
+        .execute()
+    ).data or {}
+
+    doctor_name = doctor.get("full_name") or doctor.get("name") or "Doctor"
+
+    # Send message
+    message = (
+        supabase.table("patient_message")
+        .insert({
+            "patient_id": str(body.patient_id),
+            "sender": "care_team",
+            "sender_name": doctor_name,
+            "body": body.body,
+            "message_type": body.message_type,
+            "cited_item_ids": [str(id) for id in (body.cited_item_ids or [])],
+        })
+        .select("*")
+        .single()
+        .execute()
+    ).data
+
+    return message
+
+
+@router.get("/messages/{patient_id}")
+async def get_messages(request: Request, patient_id: UUID):
+    """Get all messages for a patient."""
+    _require_care_team(request)
+    supabase = get_supabase_client(use_service_role=True)
+    user = request.state.user
+
+    # Verify doctor has access to this patient
+    pids = _doctor_patient_ids(supabase, user)
+    if str(patient_id) not in pids:
+        raise HTTPException(status_code=403, detail="You do not have access to this patient")
+
+    messages = (
+        supabase.table("patient_message")
+        .select("*")
+        .eq("patient_id", str(patient_id))
+        .order("created_at", desc=True)
+        .limit(100)
+        .execute()
+    ).data or []
+
+    return {"messages": messages}
+
+
+# ---------------------------------------------------------------------
+# Answer patient question
+# ---------------------------------------------------------------------
+class AnswerQuestionRequest(BaseModel):
+    question_id: UUID
+    answer: str
+    cited_item_ids: Optional[List[UUID]] = None
+
+
+@router.post("/questions/answer")
+async def answer_question(request: Request, body: AnswerQuestionRequest):
+    """Answer a patient question."""
+    _require_care_team(request)
+    supabase = get_supabase_client(use_service_role=True)
+    user = request.state.user
+
+    # Get the question
+    question = (
+        supabase.table("patient_question")
+        .select("*")
+        .eq("id", str(body.question_id))
+        .single()
+        .execute()
+    ).data
+
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    # Verify doctor has access to this patient
+    pids = _doctor_patient_ids(supabase, user)
+    if question["patient_id"] not in pids:
+        raise HTTPException(status_code=403, detail="You do not have access to this patient")
+
+    # Update the question with answer
+    updated = (
+        supabase.table("patient_question")
+        .update({
+            "answer": body.answer,
+            "cited_item_ids": [str(id) for id in (body.cited_item_ids or [])],
+            "answered_at": datetime.now(timezone.utc).isoformat(),
+        })
+        .eq("id", str(body.question_id))
+        .select("*")
+        .single()
+        .execute()
+    ).data
+
+    # Also send as a message
+    doctor = (
+        supabase.table("profiles")
+        .select("full_name, name")
+        .eq("id", user.get("user_id"))
+        .single()
+        .execute()
+    ).data or {}
+
+    doctor_name = doctor.get("full_name") or doctor.get("name") or "Doctor"
+
+    supabase.table("patient_message").insert({
+        "patient_id": question["patient_id"],
+        "sender": "care_team",
+        "sender_name": doctor_name,
+        "body": f"Answer to your question: {question['question']}\n\n{body.answer}",
+        "message_type": "doctor_answer",
+        "cited_item_ids": [str(id) for id in (body.cited_item_ids or [])],
+    }).execute()
+
+    return updated

@@ -13,15 +13,17 @@ import {
   History,
   X,
   Loader2,
+  MessageSquare,
+  Send,
 } from 'lucide-react';
 import { getPatientById } from '../services/doctorService';
 import { getPatientItems } from '../services/itemService';
 import { getPatientFlags } from '../services/flagService';
 import { getPatientQuestions } from '../services/questionService';
 import { getPatientMedications } from '../services/medicationService';
-import { webGetDischargeSummary, webAddTask } from '../lib/api';
+import { webGetDischargeSummary, webAddTask, webGetMessages, webSendMessage, webAnswerQuestion } from '../lib/api';
 
-type TabType = 'attention' | 'plan' | 'summary' | 'medicines' | 'activity' | 'audit';
+type TabType = 'attention' | 'plan' | 'summary' | 'medicines' | 'activity' | 'messages' | 'audit';
 
 const tabs = [
   { id: 'attention' as TabType, label: 'Attention', icon: AlertCircle },
@@ -29,6 +31,7 @@ const tabs = [
   { id: 'summary' as TabType, label: 'Discharge summary', icon: FileText },
   { id: 'medicines' as TabType, label: 'Medicines', icon: Pill },
   { id: 'activity' as TabType, label: 'Patient activity', icon: Activity },
+  { id: 'messages' as TabType, label: 'Messages', icon: MessageSquare },
   { id: 'audit' as TabType, label: 'Audit', icon: History },
 ];
 
@@ -46,6 +49,13 @@ export function PatientDetail() {
   });
   const [submittingTask, setSubmittingTask] = useState(false);
   const [taskError, setTaskError] = useState<string | null>(null);
+
+  const [messageInput, setMessageInput] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+
+  const [selectedQuestion, setSelectedQuestion] = useState<any>(null);
+  const [answerInput, setAnswerInput] = useState('');
+  const [sendingAnswer, setSendingAnswer] = useState(false);
 
   const { data: patient, isLoading: patientLoading } = useQuery({
     queryKey: ['patient', id],
@@ -83,6 +93,12 @@ export function PatientDetail() {
     enabled: !!id,
   });
 
+  const { data: messages, isLoading: messagesLoading } = useQuery({
+    queryKey: ['patient-messages', id],
+    queryFn: () => webGetMessages(id!),
+    enabled: !!id && activeTab === 'messages',
+  });
+
   async function submitAddTask() {
     if (!taskForm.description.trim()) {
       setTaskError('Task description is required');
@@ -100,16 +116,60 @@ export function PatientDetail() {
       });
       if (res.error) {
         setTaskError(res.error);
-        return;
+      } else {
+        setShowAddTask(false);
+        setTaskForm({ title: '', description: '', item_type: 'care_instruction', due_date: '' });
+        queryClient.invalidateQueries({ queryKey: ['patient-items'] });
       }
-      setShowAddTask(false);
-      setTaskForm({ title: '', description: '', item_type: 'care_instruction', due_date: '' });
-      // Refresh plan items (web Plan reads v_items_effective -> followup_item)
-      queryClient.invalidateQueries({ queryKey: ['patient-items', id] });
-    } catch (e: any) {
-      setTaskError(e?.message || 'Failed to add task');
+    } catch (err) {
+      setTaskError('Failed to add task');
     } finally {
       setSubmittingTask(false);
+    }
+  }
+
+  async function handleSendMessage() {
+    if (!messageInput.trim() || !id) return;
+    setSendingMessage(true);
+    try {
+      const res = await webSendMessage({
+        patient_id: id,
+        body: messageInput.trim(),
+        message_type: 'doctor_answer',
+      });
+      if (res.error) {
+        alert(res.error);
+      } else {
+        setMessageInput('');
+        queryClient.invalidateQueries({ queryKey: ['patient-messages'] });
+      }
+    } catch (err) {
+      alert('Failed to send message');
+    } finally {
+      setSendingMessage(false);
+    }
+  }
+
+  async function handleAnswerQuestion() {
+    if (!answerInput.trim() || !selectedQuestion || !id) return;
+    setSendingAnswer(true);
+    try {
+      const res = await webAnswerQuestion({
+        question_id: selectedQuestion.id,
+        answer: answerInput.trim(),
+      });
+      if (res.error) {
+        alert(res.error);
+      } else {
+        setAnswerInput('');
+        setSelectedQuestion(null);
+        queryClient.invalidateQueries({ queryKey: ['patient-questions'] });
+        queryClient.invalidateQueries({ queryKey: ['patient-messages'] });
+      }
+    } catch (err) {
+      alert('Failed to answer question');
+    } finally {
+      setSendingAnswer(false);
     }
   }
 
@@ -271,7 +331,15 @@ export function PatientDetail() {
                           <span className="text-sm font-semibold text-slate-900">{question.question_text}</span>
                           <span className="text-xs text-info capitalize">{question.status}</span>
                         </div>
-                        <p className="text-xs text-slate-600">Asked {new Date(question.created_at).toLocaleDateString()}</p>
+                        <p className="text-xs text-slate-600 mb-2">Asked {new Date(question.created_at).toLocaleDateString()}</p>
+                        {!question.answer && (
+                          <button
+                            onClick={() => setSelectedQuestion(question)}
+                            className="text-xs px-2 py-1 bg-primary text-white rounded hover:bg-primary-700"
+                          >
+                            Answer
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -410,6 +478,80 @@ export function PatientDetail() {
           </div>
         )}
 
+        {activeTab === 'messages' && (
+          <div className="space-y-4">
+            <div className="border-b border-border pb-4">
+              <h3 className="text-sm font-bold text-slate-900 mb-2">Patient Communication</h3>
+              <p className="text-xs text-slate-500">View and respond to patient messages and questions.</p>
+            </div>
+
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+              {messagesLoading ? (
+                <div className="text-center py-8">
+                  <Loader2 className="w-6 h-6 mx-auto mb-2 text-slate-400 animate-spin" />
+                  <p className="text-sm text-slate-500">Loading messages...</p>
+                </div>
+              ) : messages && messages.data && messages.data.messages && messages.data.messages.length > 0 ? (
+                messages.data.messages.map((msg: any) => (
+                  <div
+                    key={msg.id}
+                    className={`p-3 rounded-lg ${
+                      msg.sender === 'care_team'
+                        ? 'bg-primary/10 border border-primary/20 ml-8'
+                        : 'bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-slate-700">
+                        {msg.sender_name}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        {new Date(msg.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-800">{msg.body}</p>
+                    {msg.message_type && (
+                      <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-200 text-slate-600">
+                        {msg.message_type}
+                      </span>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 border border-dashed border-border rounded-lg">
+                  <MessageSquare className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                  <p className="text-sm text-slate-500">No messages yet.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={messageInput}
+                  onChange={(e) => setMessageInput(e.target.value)}
+                  placeholder="Type a message to the patient..."
+                  className="flex-1 px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  onKeyPress={(e) => e.key === 'Enter' && messageInput.trim() && !sendingMessage && handleSendMessage()}
+                />
+                <button
+                  onClick={handleSendMessage}
+                  disabled={!messageInput.trim() || sendingMessage}
+                  className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {sendingMessage ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'audit' && (
           <div className="text-center py-8">
             <p className="text-sm text-slate-500">Audit log view</p>
@@ -498,6 +640,68 @@ export function PatientDetail() {
                 className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2"
               >
                 {submittingTask ? (<><Loader2 className="w-4 h-4 animate-spin" /> Adding...</>) : 'Add task'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Answer Question modal */}
+      {selectedQuestion && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h2 className="text-lg font-bold text-slate-900">Answer Patient Question</h2>
+              <button
+                onClick={() => setSelectedQuestion(null)}
+                className="p-1 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              <div className="p-3 bg-slate-50 rounded-lg border border-border">
+                <p className="text-sm font-semibold text-slate-900 mb-1">Question:</p>
+                <p className="text-sm text-slate-700">{selectedQuestion.question_text}</p>
+                <p className="text-xs text-slate-500 mt-2">
+                  Route: {selectedQuestion.route} • Asked {new Date(selectedQuestion.created_at).toLocaleDateString()}
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Your answer *</label>
+                <textarea
+                  rows={4}
+                  value={answerInput}
+                  onChange={(e) => setAnswerInput(e.target.value)}
+                  placeholder="Provide a clear and helpful answer..."
+                  className="w-full px-3 py-2 bg-white border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-border bg-slate-50">
+              <button
+                onClick={() => setSelectedQuestion(null)}
+                disabled={sendingAnswer}
+                className="px-4 py-2 bg-white border border-border rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAnswerQuestion}
+                disabled={sendingAnswer || !answerInput.trim()}
+                className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {sendingAnswer ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Send Answer
+                  </>
+                )}
               </button>
             </div>
           </div>
