@@ -177,38 +177,8 @@ export async function webGetDischargeSummary(patientId: string) {
   }>(`/web/patients/${patientId}/discharge-summary`);
 }
 
-export async function webAddTask(payload: {
-  patient_id: string;
-  description: string;
-  item_type?: string;
-  due_date?: string | null;
-  title?: string | null;
-}) {
-  return apiFetch('/web/add-task', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function webGetMyAttention() {
-  return apiFetch<{ patients: any[] }>('/web/my-attention');
-}
-
-export async function webGetMyFlags() {
-  return apiFetch<{ flags: any[] }>('/web/my-flags');
-}
-
-export async function webRescheduleAppointment(payload: {
-  item_id: string;
-  new_due_date: string;
-  new_due_time?: string;
-  new_provider?: any;
-  reason?: string;
-}) {
-  return apiFetch('/web/schedule/reschedule', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
+export async function webGetMessages(patientId: string) {
+  return apiFetch<{ messages: any[] }>(`/web/messages/${patientId}`);
 }
 
 export async function webSendMessage(payload: {
@@ -223,10 +193,6 @@ export async function webSendMessage(payload: {
   });
 }
 
-export async function webGetMessages(patientId: string) {
-  return apiFetch<{ messages: any[] }>(`/web/messages/${patientId}`);
-}
-
 export async function webAnswerQuestion(payload: {
   question_id: string;
   answer: string;
@@ -236,6 +202,14 @@ export async function webAnswerQuestion(payload: {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export async function webGetMyAttention() {
+  return apiFetch<{ patients: any[] }>('/web/my-attention');
+}
+
+export async function webGetMyFlags() {
+  return apiFetch<{ flags: any[] }>('/web/my-flags');
 }
 
 export async function webGetSchedule(days = 7) {

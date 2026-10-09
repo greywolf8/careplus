@@ -5,8 +5,8 @@ import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { getPatientAttentionList } from '../services/doctorService';
 import { getUnresolvedFlags } from '../services/flagService';
-import { webGetSchedule, webRescheduleAppointment } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 export function DoctorDashboard() {
   const { profile } = useAuth();
@@ -33,24 +33,88 @@ export function DoctorDashboard() {
 
   const { data: schedule, isLoading: scheduleLoading } = useQuery({
     queryKey: ['doctor-schedule'],
-    queryFn: () => webGetSchedule(7),
+    queryFn: async () => {
+      const profile = await supabase.auth.getUser();
+      if (!profile.data.user) return { data: { today: [], upcoming: [], today_date: '' } };
+
+      // Get assigned patient IDs
+      const { data: assignments } = await supabase
+        .from('doctor_patients')
+        .select('patient_id')
+        .eq('doctor_id', profile.data.user.id)
+        .eq('active', true);
+
+      const patientIds = assignments?.map(a => a.patient_id) || [];
+      if (patientIds.length === 0) return { data: { today: [], upcoming: [], today_date: '' } };
+
+      // Get today's date
+      const today = new Date().toISOString().split('T')[0];
+
+      // Query followup items for appointments
+      const { data: items } = await supabase
+        .from('followup_item')
+        .select('*, patient ( id, full_name )')
+        .in('patient_id', patientIds)
+        .eq('category', 'appointment')
+        .gte('due_date', today)
+        .order('due_date', { ascending: true });
+
+      const todayItems = (items || []).filter((i: any) => i.due_date === today);
+      const upcomingItems = (items || []).filter((i: any) => i.due_date > today);
+
+      return {
+        data: {
+          today: todayItems.map((i: any) => ({
+            id: i.id,
+            patient_id: i.patient_id,
+            patient_name: i.patient?.full_name || 'Unknown',
+            title: i.title,
+            due_date: i.due_date,
+            due_time: i.due_time,
+            provider: i.provider_suggestion?.name || null,
+            status: i.effective_status,
+            is_completed: i.completed_at !== null,
+          })),
+          upcoming: upcomingItems.slice(0, 5).map((i: any) => ({
+            id: i.id,
+            patient_id: i.patient_id,
+            patient_name: i.patient?.full_name || 'Unknown',
+            title: i.title,
+            due_date: i.due_date,
+            due_time: i.due_time,
+            provider: i.provider_suggestion?.name || null,
+            status: i.effective_status,
+            is_completed: i.completed_at !== null,
+          })),
+          today_date: today,
+        },
+      };
+    },
     retry: false,
   });
 
-  const needsAttention = attentionList?.filter(p => p.urgency_score > 0) || [];
-  const openQuestions = flags?.filter(f => f.question_id) || [];
-  const overdueItems = attentionList?.filter(p => p.overdue_items > 0) || [];
+  const needsAttention = (attentionList as any[])?.filter((p: any) => p.urgency_score > 0) || [];
+  const openQuestions = (flags as any[])?.filter((f: any) => f.question_id) || [];
+  const overdueItems = (attentionList as any[])?.filter((p: any) => p.overdue_items > 0) || [];
 
   const handleReschedule = async () => {
     if (!selectedAppointment || !rescheduleForm.new_due_date) return;
     setRescheduling(true);
     try {
-      await webRescheduleAppointment({
-        item_id: selectedAppointment.id,
-        new_due_date: rescheduleForm.new_due_date,
-        new_due_time: rescheduleForm.new_due_time || undefined,
-        reason: rescheduleForm.reason || undefined,
-      });
+      // Use direct Supabase update
+      const { error } = await supabase
+        .from('followup_item')
+        .update({
+          due_date: rescheduleForm.new_due_date,
+          due_time: rescheduleForm.new_due_time || null,
+        })
+        .eq('id', selectedAppointment.id);
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
       setShowRescheduleModal(false);
       setSelectedAppointment(null);
       setRescheduleForm({ new_due_date: '', new_due_time: '', reason: '' });
@@ -171,7 +235,7 @@ export function DoctorDashboard() {
               ) : needsAttention.length === 0 ? (
                 <div className="p-4 text-center text-slate-500 text-sm">No patients need attention</div>
               ) : (
-                needsAttention.slice(0, 5).map((patient) => (
+                needsAttention.slice(0, 5).map((patient: any) => (
                   <Link
                     key={patient.patient_id}
                     to={`/doctor/patients/${patient.patient_id}`}
@@ -179,7 +243,7 @@ export function DoctorDashboard() {
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-semibold">
-                        {patient.patient_name.split(' ').map(n => n[0]).join('')}
+                        {patient.patient_name.split(' ').map((n: string) => n[0]).join('')}
                       </div>
                       <div>
                         <h3 className="text-xs font-bold text-slate-900">{patient.patient_name}</h3>
@@ -222,7 +286,7 @@ export function DoctorDashboard() {
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-xs font-semibold">
-                        {patient.patient_name.split(' ').map(n => n[0]).join('')}
+                        {patient.patient_name.split(' ').map((n: string) => n[0]).join('')}
                       </div>
                       <div>
                         <h3 className="text-xs font-bold text-slate-900">{patient.patient_name}</h3>
@@ -255,7 +319,7 @@ export function DoctorDashboard() {
               ) : overdueItems.length === 0 ? (
                 <div className="p-4 text-center text-slate-500 text-sm">No overdue items</div>
               ) : (
-                overdueItems.slice(0, 5).map((patient) => (
+                overdueItems.slice(0, 5).map((patient: any) => (
                   <Link
                     key={patient.patient_id}
                     to={`/doctor/patients/${patient.patient_id}`}
@@ -290,12 +354,12 @@ export function DoctorDashboard() {
             <div className="p-5 space-y-3.5">
               {scheduleLoading ? (
                 <div className="text-center text-slate-500 text-sm py-4">Loading…</div>
-              ) : (schedule?.data?.today?.length || 0) === 0 ? (
+              ) : ((schedule as any)?.data?.today?.length || 0) === 0 ? (
                 <div className="text-center text-slate-500 text-sm py-4">
                   No appointments scheduled for today
                 </div>
               ) : (
-                schedule!.data!.today!.map((a: any) => (
+                (schedule as any)!.data!.today!.map((a: any) => (
                   <Link
                     key={a.id}
                     to={`/doctor/patients/${a.patient_id}`}
@@ -335,11 +399,11 @@ export function DoctorDashboard() {
                 ))
               )}
 
-              {!scheduleLoading && (schedule?.data?.upcoming?.length || 0) > 0 && (
+              {!scheduleLoading && ((schedule as any)?.data?.upcoming?.length || 0) > 0 && (
                 <div className="pt-2 border-t border-slate-100">
                   <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">Upcoming</p>
                   <div className="space-y-1.5">
-                    {schedule!.data!.upcoming!.slice(0, 5).map((a: any) => (
+                    {(schedule as any)!.data!.upcoming!.slice(0, 5).map((a: any) => (
                       <div key={a.id} className="flex items-center justify-between text-xs text-slate-600">
                         <span className="truncate">
                           <span className="font-medium text-slate-700">{a.patient_name}</span> — {a.title || 'Appointment'}

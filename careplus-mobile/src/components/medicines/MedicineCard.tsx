@@ -35,7 +35,15 @@ export const MedicineCard: React.FC<MedicineCardProps> = ({ medication, adherenc
     setLocalAdherenceStatus('taken');
     notifySuccess(`Recorded dose of ${medication.drug_name} as Taken.`, 'Medication Adherence');
 
+    console.log('[MedicineCard] Recording adherence for:', {
+      medicationId: medication.id,
+      drugName: medication.drug_name,
+      patientId: patientContext.patientId,
+    });
+
     const res = await dataService.recordAdherence(medication.id, 'taken', patientContext);
+    console.log('[MedicineCard] Adherence record result:', res);
+
     if (res.success) {
       refreshData();
     } else {

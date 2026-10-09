@@ -103,8 +103,7 @@ export class DataService {
       return mockDb.getEffectiveItems(patientId);
     }
     const items = await followupService.fetchFollowupItems(patientId);
-    if (items.length > 0) return items;
-    return mockDb.getEffectiveItems(patientId);
+    return items;
   }
 
   public async getItemById(itemId: string): Promise<FollowupItem | null> {
@@ -112,7 +111,7 @@ export class DataService {
       return mockDb.getItemById(itemId);
     }
     const item = await followupService.fetchFollowupItemById(itemId);
-    return item || mockDb.getItemById(itemId);
+    return item;
   }
 
   public async getItemTranslation(
@@ -126,7 +125,7 @@ export class DataService {
     if (trans) {
       return { title: trans.translated_title, instruction: trans.translated_instruction };
     }
-    return mockDb.getItemTranslation(itemId, lang);
+    return null;
   }
 
   public async markItemDone(
@@ -163,8 +162,7 @@ export class DataService {
       return mockDb.getMedications(patientId);
     }
     const meds = await medicationService.fetchPatientMedications(patientId);
-    if (meds.length > 0) return meds;
-    return mockDb.getMedications(patientId);
+    return meds;
   }
 
   // Adherence
@@ -173,8 +171,7 @@ export class DataService {
       return mockDb.getAdherenceLogs(patientId, date);
     }
     const logs = await adherenceService.fetchAdherenceLogs(patientId, date);
-    if (logs.length > 0) return logs;
-    return mockDb.getAdherenceLogs(patientId, date);
+    return logs;
   }
 
   public async recordAdherence(
@@ -226,8 +223,7 @@ export class DataService {
       return mockDb.getWarningSigns(patientId);
     }
     const signs = await warningSignService.fetchWarningSigns(patientId);
-    if (signs.length > 0) return signs;
-    return mockDb.getWarningSigns(patientId);
+    return signs;
   }
 
   // Test Results
@@ -236,8 +232,7 @@ export class DataService {
       return mockDb.getTestResults(patientId);
     }
     const tests = await testResultService.fetchReleasedTestResults(patientId);
-    if (tests.length > 0) return tests;
-    return mockDb.getTestResults(patientId);
+    return tests;
   }
 
   // Care Providers
@@ -246,8 +241,7 @@ export class DataService {
       return mockDb.getProviders();
     }
     const provs = await providerService.fetchActiveCareProviders();
-    if (provs.length > 0) return provs;
-    return mockDb.getProviders();
+    return provs;
   }
 
   public async nearbyProviders(category?: string, query?: string): Promise<Provider[]> {
@@ -255,8 +249,7 @@ export class DataService {
       return mockDb.nearbyProviders(category, query);
     }
     const results = await providerService.searchNearbyCareProviders(category, query);
-    if (results.length > 0) return results;
-    return mockDb.nearbyProviders(category, query);
+    return results;
   }
 
   // Chat / Messages
@@ -265,8 +258,7 @@ export class DataService {
       return mockDb.getQuestions(patientId);
     }
     const msgs = await messageService.fetchPatientMessages(patientId);
-    if (msgs.length > 0) return msgs;
-    return mockDb.getQuestions(patientId);
+    return msgs;
   }
 
   public async addQuestionMessage(
@@ -276,11 +268,7 @@ export class DataService {
       return mockDb.addQuestionMessage(msg);
     }
     const saved = await messageService.savePatientMessage(msg);
-    if (saved) {
-      mockDb.addQuestionMessage(msg);
-      return saved;
-    }
-    return mockDb.addQuestionMessage(msg);
+    return saved || mockDb.addQuestionMessage(msg);
   }
 
   // Reminders
@@ -289,8 +277,7 @@ export class DataService {
       return mockDb.getReminders(patientId);
     }
     const rems = await reminderService.fetchPatientReminders(patientId);
-    if (rems.length > 0) return rems;
-    return mockDb.getReminders(patientId);
+    return rems;
   }
 
   // Access Requests
@@ -299,8 +286,7 @@ export class DataService {
       return mockDb.getAccessRequests();
     }
     const reqs = await caregiverService.fetchCaregiverAccessRequests('pat_lakshmi_01');
-    if (reqs.length > 0) return reqs;
-    return mockDb.getAccessRequests();
+    return reqs;
   }
 
   public async decideAccessRequest(
@@ -326,8 +312,7 @@ export class DataService {
     }
     // Use review_flags instead of coordination_card for unification
     const cards = await reviewFlagService.fetchReviewFlags(patientId);
-    if (cards.length > 0) return cards;
-    return mockDb.getCoordinationCards(patientId);
+    return cards;
   }
 
   public async addCoordinationCard(
@@ -338,11 +323,7 @@ export class DataService {
     }
     // Use review_flags instead of coordination_card for unification
     const created = await reviewFlagService.createReviewFlag(card);
-    if (created) {
-      mockDb.addCoordinationCard(card);
-      return created;
-    }
-    return mockDb.addCoordinationCard(card);
+    return created || mockDb.addCoordinationCard(card);
   }
 
   public async updateCoordinationCardStatus(
@@ -355,9 +336,6 @@ export class DataService {
     }
     // Use review_flags instead of coordination_card for unification
     const ok = await reviewFlagService.updateReviewFlagStatus(id, status, careTeamNotes);
-    if (ok) {
-      mockDb.updateCoordinationCardStatus(id, status, careTeamNotes);
-    }
     return ok;
   }
 

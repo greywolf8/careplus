@@ -1,6 +1,5 @@
 import { supabase } from '../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
-import { apiFetch } from '../lib/api';
 import type { Patient, PatientAttention } from '../types';
 
 export async function getDoctorPatients() {
@@ -33,13 +32,43 @@ export async function getDoctorPatients() {
 
 export async function getPatientAttentionList() {
   const profile = await supabase.auth.getUser();
-  if (!profile.data.user) throw new Error('Not authenticated');
+  if (!profile.data.user) {
+    console.error('[doctorService] Not authenticated');
+    return [];
+  }
 
   try {
-    // Doctor-scoped via backend (only patients assigned to this doctor).
-    const res = await apiFetch<{ patients: PatientAttention[] }>('/web/my-attention');
-    if (res.error) throw new Error(res.error);
-    return res.data.patients || [];
+    // Get assigned patient IDs first
+    const { data: assignments, error: assignError } = await supabase
+      .from('doctor_patients')
+      .select('patient_id')
+      .eq('doctor_id', profile.data.user.id)
+      .eq('active', true);
+
+    if (assignError) {
+      console.error('[doctorService] Error fetching assignments:', assignError);
+      return [];
+    }
+
+    const patientIds = assignments?.map(a => a.patient_id) || [];
+    if (patientIds.length === 0) {
+      console.log('[doctorService] No assigned patients');
+      return [];
+    }
+
+    // Query the attention view for assigned patients
+    const { data, error } = await supabase
+      .from('v_patient_attention')
+      .select('*')
+      .in('patient_id', patientIds)
+      .order('urgency_score', { ascending: false });
+
+    if (error) {
+      console.error('[doctorService] Error fetching attention list:', error);
+      return [];
+    }
+
+    return data as PatientAttention[];
   } catch (error: any) {
     console.error('[doctorService] Failed to fetch patient attention list:', error);
     return [];
@@ -62,20 +91,19 @@ export async function getPatientById(patientId: string) {
     throw new Error('Access denied: Not assigned to this patient');
   }
 
-  const result = await apiFetch<{ data: Patient }>(`/episode/${patientId}`);
+  // Use Supabase directly for patient details
+  const { data, error } = await supabase
+    .from('patient')
+    .select('*')
+    .eq('id', patientId)
+    .single();
 
-  if (result.error) {
-    const { data, error } = await supabase
-      .from('patient')
-      .select('*')
-      .eq('id', patientId)
-      .single();
-
-    if (error) throw error;
-    return data as Patient;
+  if (error) {
+    console.error('Error fetching patient:', error);
+    throw error;
   }
 
-  return result.data.data;
+  return data as Patient;
 }
 export async function createPatient(
   patientData: {

@@ -473,7 +473,7 @@ async def update_review_flag(flag_id: UUID, request: Request, body: ReviewFlagUp
 # Messaging endpoints for mobile app
 # ---------------------------------------------------------------------
 @router.post("/{patient_id}/messages")
-async def send_patient_message(patient_id: UUID, request: Request, body: SendMessageRequest):
+async def send_patient_message(patient_id: UUID, request: Request, body: PatientMessageCreateRequest):
     """Send a message from patient/caregiver to care team."""
     ctx = _access().assert_can_access_patient(request.state.user, patient_id)
     supabase = _supabase()

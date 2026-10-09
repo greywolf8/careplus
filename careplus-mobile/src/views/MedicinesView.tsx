@@ -12,19 +12,28 @@ export const MedicinesView: React.FC = () => {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [todayAdherence, setTodayAdherence] = useState<AdherenceLog[]>([]);
 
+  // Get today's date in YYYY-MM-DD format
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+
   useEffect(() => {
     let isMounted = true;
     const patId = patientContext.patientId;
+    console.log('[MedicinesView] Loading data for patient:', patId, 'date:', todayStr);
+
     dataService.getMedications(patId).then((meds) => {
+      console.log('[MedicinesView] Medications loaded:', meds.length, meds);
       if (isMounted) setMedications(meds);
     });
-    dataService.getAdherenceLogs(patId, '2026-10-08').then((logs) => {
+
+    dataService.getAdherenceLogs(patId, todayStr).then((logs) => {
+      console.log('[MedicinesView] Adherence logs loaded:', logs.length, logs);
       if (isMounted) setTodayAdherence(logs);
     });
+
     return () => {
       isMounted = false;
     };
-  }, [patientContext.patientId]);
+  }, [patientContext.patientId, todayStr]);
 
   const adherenceMap = useMemo(() => {
     const map = new Map<string, AdherenceLog>();
@@ -33,6 +42,12 @@ export const MedicinesView: React.FC = () => {
   }, [todayAdherence]);
 
   const takenCount = todayAdherence.filter((l) => l.status === 'taken').length;
+
+  // Only count medications that have adherence logs for today (being tracked)
+  const medicationsTrackedToday = useMemo(() => {
+    const trackedIds = new Set(todayAdherence.map((l) => l.medication_id));
+    return medications.filter((m) => trackedIds.has(m.id));
+  }, [medications, todayAdherence]);
 
   return (
     <div className="space-y-4 pb-8 animate-in fade-in duration-200">
@@ -74,7 +89,7 @@ export const MedicinesView: React.FC = () => {
             </strong>
           </span>
           <span className="font-semibold" style={isLight ? { color: '#007A73' } : { color: '#2dd4bf' }}>
-            08 Oct 2026
+            {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
           </span>
         </div>
       </div>

@@ -1,38 +1,27 @@
 import { supabase } from '../lib/supabase';
-import { apiFetch } from '../lib/api';
 import type { FollowupItem, ItemEffective } from '../types';
 
 export async function getPatientItems(patientId: string) {
-  const result = await apiFetch<{ data: ItemEffective[] }>(`/obligation/graph/${patientId}`);
+  // Use Supabase directly for items
+  const { data, error } = await supabase
+    .from('v_items_effective')
+    .select('*')
+    .eq('patient_id', patientId)
+    .order('due_date', { ascending: true, nullsFirst: false });
 
-  if (result.error) {
-    const fallback = await supabase
-      .from('v_items_effective')
-      .select('*')
-      .eq('patient_id', patientId)
-      .order('due_date', { ascending: true, nullsFirst: false });
-
-    if (fallback.error) throw fallback.error;
-    return fallback.data as ItemEffective[];
+  if (error) {
+    console.error('Error fetching patient items:', error);
+    throw error;
   }
 
-  return result.data.data;
+  return data as ItemEffective[];
 }
 
 export async function approveItem(itemId: string) {
-  // Try backend API first, fall back to Supabase RPC
-  const result = await apiFetch<{ data: any }>('/obligation/approve', {
-    method: 'POST',
-    body: JSON.stringify({ extracted_id: itemId, rmp_id: '', mci_reg: '', final_text: '' }),
-  });
-
-  if (result.error) {
-    const { data, error } = await supabase.rpc('approve_item', { item_id: itemId });
-    if (error) throw error;
-    return data;
-  }
-
-  return result.data;
+  // Use Supabase RPC directly
+  const { data, error } = await supabase.rpc('approve_item', { item_id: itemId });
+  if (error) throw error;
+  return data;
 }
 
 export async function rejectItem(itemId: string, reason?: string) {

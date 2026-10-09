@@ -16,6 +16,12 @@ CREATE TYPE followup_item_category AS ENUM (
     'appointment',
     'test',
     'care',
+    'care_instruction',
+    'medication',
+    'warning_sign',
+    'diet',
+    'rehab',
+    'wound_care',
     'general'
 );
 

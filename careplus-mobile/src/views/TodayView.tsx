@@ -51,21 +51,28 @@ export const TodayView: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
     const patId = patientContext.patientId;
+    const todayIso = new Date().toISOString().split('T')[0];
+
+    console.log('[TodayView] Loading data for patient:', patId, 'date:', todayIso);
 
     dataService.getEffectiveItems(patId).then((items) => {
+      console.log('[TodayView] Items loaded:', items.length);
       if (isMounted) setAllItems(items);
     });
     dataService.getMedications(patId).then((meds) => {
+      console.log('[TodayView] Medications loaded:', meds.length);
       if (isMounted) setMedications(meds);
     });
-    const todayIso = new Date().toISOString().split('T')[0];
     dataService.getAdherenceLogs(patId, todayIso).then((logs) => {
+      console.log('[TodayView] Adherence logs loaded:', logs.length, logs);
       if (isMounted) setAdherenceLogs(logs);
     });
     dataService.getReminders(patId).then((rems) => {
+      console.log('[TodayView] Reminders loaded:', rems.length);
       if (isMounted) setReminders(rems.filter((r) => !r.is_past));
     });
     dataService.getCoordinationCards(patId).then((cards) => {
+      console.log('[TodayView] Coordination cards loaded:', cards.length);
       if (isMounted) setCoordinationCards(cards);
     });
 
@@ -83,21 +90,47 @@ export const TodayView: React.FC = () => {
   
   // Due today includes items scheduled for today or daily care
   const dueTodayItems = useMemo(
-    () => visibleItems.filter((i) => (i.section === 'DUE TODAY' || i.section === 'DAILY CARE' || i.due_date === todayStr) && i.effective_status !== 'overdue'),
+    () => visibleItems.filter((i) => {
+      const isToday = i.due_date === todayStr;
+      const isDailyCare = i.section === 'DAILY CARE';
+      const isDueToday = i.section === 'DUE TODAY';
+      return (isToday || isDailyCare || isDueToday) && i.effective_status !== 'overdue';
+    }),
     [visibleItems, todayStr]
   );
   const completedTodayCount = useMemo(() => dueTodayItems.filter((i) => i.effective_status === 'completed').length, [dueTodayItems]);
   const overdueItems = useMemo(() => visibleItems.filter((i) => i.section === 'OVERDUE' || i.effective_status === 'overdue'), [visibleItems]);
-  
+
   // Upcoming appointments & scheduled followups (category='appointment' or section='NEXT UP')
   const upcomingAppointments = useMemo(
     () => visibleItems.filter((i) => (i.section === 'NEXT UP' || i.category === 'appointment') && !dueTodayItems.some((d) => d.id === i.id) && i.effective_status !== 'overdue'),
     [visibleItems, dueTodayItems]
   );
 
-  const totalTrackedItems = dueTodayItems.length + medications.length;
+  // For medications, only count those that have adherence logs for today (meaning they're being tracked today)
+  const medicationsTrackedToday = useMemo(() => {
+    const trackedIds = new Set(adherenceLogs.map((l) => l.medication_id));
+    return medications.filter((m) => trackedIds.has(m.id));
+  }, [medications, adherenceLogs]);
+
+  const totalTrackedItems = dueTodayItems.length + medicationsTrackedToday.length;
   const totalCompletedItems = completedTodayCount + takenMedsCount;
   const progressPercentage = totalTrackedItems > 0 ? Math.round((totalCompletedItems / totalTrackedItems) * 100) : 0;
+
+  // Debug logging
+  console.log('TodayView Debug:', {
+    todayStr,
+    visibleItems: visibleItems.length,
+    dueTodayItems: dueTodayItems.length,
+    completedTodayCount,
+    medications: medications.length,
+    medicationsTrackedToday: medicationsTrackedToday.length,
+    adherenceLogs: adherenceLogs.length,
+    takenMedsCount,
+    totalTrackedItems,
+    totalCompletedItems,
+    progressPercentage,
+  });
 
   const nextPendingItem = useMemo(() => dueTodayItems.find((i) => i.effective_status === 'pending') || null, [dueTodayItems]);
   const nextPendingMedication = useMemo(() => {
@@ -298,7 +331,7 @@ export const TodayView: React.FC = () => {
             <div className="grid grid-cols-3 gap-2 mt-3 text-center">
               {[
                 { label: 'Completed', value: totalCompletedItems, colorStyle: isLight ? { color: '#1A7A50' } : { color: '#34d399' } },
-                { label: 'Pending',   value: dueTodayItems.filter((i) => i.effective_status === 'pending').length + (medications.length - takenMedsCount), colorStyle: isLight ? { color: '#007A73' } : { color: '#5eead4' } },
+                { label: 'Pending',   value: dueTodayItems.filter((i) => i.effective_status === 'pending').length + (medicationsTrackedToday.length - takenMedsCount), colorStyle: isLight ? { color: '#007A73' } : { color: '#5eead4' } },
                 { label: 'Overdue',   value: overdueItems.length, colorStyle: isLight ? { color: '#C58A00' } : { color: '#fbbf24' } },
               ].map((stat) => (
                 <div

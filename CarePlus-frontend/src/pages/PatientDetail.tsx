@@ -15,13 +15,15 @@ import {
   Loader2,
   MessageSquare,
   Send,
+  CheckCircle,
 } from 'lucide-react';
 import { getPatientById } from '../services/doctorService';
 import { getPatientItems } from '../services/itemService';
-import { getPatientFlags } from '../services/flagService';
+import { getPatientFlags, markFlagResolved } from '../services/flagService';
 import { getPatientQuestions } from '../services/questionService';
 import { getPatientMedications } from '../services/medicationService';
-import { webGetDischargeSummary, webAddTask, webGetMessages, webSendMessage, webAnswerQuestion } from '../lib/api';
+import { webGetDischargeSummary, webGetMessages, webSendMessage, webAnswerQuestion } from '../lib/api';
+import { supabase } from '../lib/supabase';
 
 type TabType = 'attention' | 'plan' | 'summary' | 'medicines' | 'activity' | 'messages' | 'audit';
 
@@ -56,6 +58,7 @@ export function PatientDetail() {
   const [selectedQuestion, setSelectedQuestion] = useState<any>(null);
   const [answerInput, setAnswerInput] = useState('');
   const [sendingAnswer, setSendingAnswer] = useState(false);
+  const [resolvingFlag, setResolvingFlag] = useState<string | null>(null);
 
   const { data: patient, isLoading: patientLoading } = useQuery({
     queryKey: ['patient', id],
@@ -107,15 +110,23 @@ export function PatientDetail() {
     setSubmittingTask(true);
     setTaskError(null);
     try {
-      const res = await webAddTask({
-        patient_id: id!,
-        description: taskForm.description.trim(),
-        item_type: taskForm.item_type,
-        due_date: taskForm.due_date || null,
-        title: taskForm.title.trim() || null,
-      });
-      if (res.error) {
-        setTaskError(res.error);
+      // Use direct Supabase insertion
+      const { error } = await supabase
+        .from('followup_item')
+        .insert({
+          patient_id: id,
+          title: taskForm.title.trim() || null,
+          category: taskForm.item_type,
+          original_text: taskForm.description.trim(),
+          due_date: taskForm.due_date || null,
+          source: 'doctor_added',
+          effective_status: 'pending',
+        })
+        .select()
+        .single();
+
+      if (error) {
+        setTaskError(error.message);
       } else {
         setShowAddTask(false);
         setTaskForm({ title: '', description: '', item_type: 'care_instruction', due_date: '' });
@@ -170,6 +181,18 @@ export function PatientDetail() {
       alert('Failed to answer question');
     } finally {
       setSendingAnswer(false);
+    }
+  }
+
+  async function handleResolveFlag(flagId: string) {
+    setResolvingFlag(flagId);
+    try {
+      await markFlagResolved(flagId);
+      queryClient.invalidateQueries({ queryKey: ['patient-flags'] });
+    } catch (err) {
+      alert('Failed to resolve flag');
+    } finally {
+      setResolvingFlag(null);
     }
   }
 
@@ -311,7 +334,19 @@ export function PatientDetail() {
                           <span className="text-sm font-semibold text-slate-900">{flag.reason}</span>
                           <span className="text-xs text-warning capitalize">{flag.severity}</span>
                         </div>
-                        <p className="text-xs text-slate-600">Raised {new Date(flag.created_at).toLocaleDateString()}</p>
+                        <p className="text-xs text-slate-600 mb-2">Raised {new Date(flag.created_at).toLocaleDateString()}</p>
+                        <button
+                          onClick={() => handleResolveFlag(flag.id)}
+                          disabled={resolvingFlag === flag.id}
+                          className="text-xs px-3 py-1.5 bg-success-container text-success rounded hover:bg-success-container/80 disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          {resolvingFlag === flag.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <CheckCircle className="w-3 h-3" />
+                          )}
+                          {resolvingFlag === flag.id ? 'Resolving...' : 'Mark as reviewed'}
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -347,6 +382,51 @@ export function PatientDetail() {
                   <p className="text-sm text-slate-500">No questions</p>
                 )}
               </div>
+            </div>
+
+            {/* Tasks needing attention */}
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 mb-4">Tasks needing attention</h3>
+              {items && items.length > 0 ? (
+                <div className="space-y-2">
+                  {items.filter((item: any) => item.effective_status === 'overdue' || item.effective_status === 'needs_review').map((item: any) => (
+                    <div key={item.id} className="p-4 rounded-lg border border-border hover:bg-slate-50 transition-colors">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            item.effective_status === 'overdue' ? 'bg-warning-container text-warning' :
+                            item.effective_status === 'needs_review' ? 'bg-info-container text-info' :
+                            'bg-surface-container text-slate-600'
+                          }`}>
+                            {item.effective_status}
+                          </span>
+                          <span className="text-sm font-semibold text-slate-900">{item.what || item.title}</span>
+                        </div>
+                        <span className="text-xs text-slate-500">
+                          Due: {item.due_date ? new Date(item.due_date).toLocaleDateString() : 'N/A'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 mb-2">{item.original_text}</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {/* TODO: Add mark as done functionality */}}
+                          className="text-xs px-3 py-1.5 bg-success-container text-success rounded hover:bg-success-container/80"
+                        >
+                          Mark as done
+                        </button>
+                        <button
+                          onClick={() => {/* TODO: Add reschedule functionality */}}
+                          className="text-xs px-3 py-1.5 bg-primary text-white rounded hover:bg-primary-700"
+                        >
+                          Reschedule
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">No tasks need attention</p>
+              )}
             </div>
           </div>
         )}
